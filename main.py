@@ -1,7 +1,14 @@
 from commands.parser import process_command
+from database.database import create_tables
+from pathlib import Path
+
+print("Current project location:", Path.cwd())
 
 
 def main():
+    
+    create_tables()
+
     print("VoicePilot started.")
     print("Type 'exit' to stop.")
 

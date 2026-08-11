@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+from database.database import find_folder
+
 
 COMMON_FOLDERS = {
     "desktop": Path.home() / "Desktop",
@@ -13,6 +15,11 @@ COMMON_FOLDERS = {
 
 
 def open_common_folder(folder_name):
+    """
+    Open common Windows user folders such as
+    Desktop, Downloads, Documents, Pictures, Music, and Videos.
+    """
+
     folder_name = folder_name.lower().strip()
 
     if folder_name not in COMMON_FOLDERS:
@@ -28,49 +35,53 @@ def open_common_folder(folder_name):
 
 
 def search_folder(folder_name):
+    """
+    Search for a folder using the SQLite folder index.
+    """
+
     folder_name = folder_name.lower().strip()
 
-    search_locations = [
-        Path.home() / "Desktop",
-        Path.home() / "Documents",
-        Path.home() / "Downloads",
-    ]
+    result = find_folder(folder_name)
 
-    matches = []
-
-    for base_path in search_locations:
-        if not base_path.exists():
-            continue
-
-        try:
-            for root, directories, files in os.walk(base_path):
-                for directory in directories:
-                    if folder_name == directory.lower():
-                        matches.append(Path(root) / directory)
-
-        except PermissionError:
-            continue
-
-    if not matches:
+    if not result:
         return None
 
-    return matches[0]
+    name, path = result
+
+    folder_path = Path(path)
+
+    # Make sure the folder still exists on the computer
+    if folder_path.exists() and folder_path.is_dir():
+        return folder_path
+
+    return None
 
 
 def open_folder(folder_name):
+    """
+    Open a folder.
+
+    First checks common Windows folders.
+    If it is not a common folder, search the SQLite folder index.
+    """
+
     folder_name = folder_name.lower().strip()
 
-    # First check common Windows folders
+    # Check common Windows folders first
     common_result = open_common_folder(folder_name)
 
     if common_result:
         return common_result
 
-    # Otherwise search for the folder
+    # Search SQLite folder index
     match = search_folder(folder_name)
 
     if match:
-        os.startfile(match)
-        return f"Opening {match.name}."
+        try:
+            os.startfile(match)
+            return f"Opening {match}."
+
+        except OSError:
+            return f"I found {match}, but I couldn't open it."
 
     return f"I couldn't find a folder called {folder_name}."
