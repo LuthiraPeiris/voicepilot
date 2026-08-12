@@ -59,6 +59,9 @@ def find_folder(folder_name):
     connection = get_connection()
     cursor = connection.cursor()
 
+    folder_name = folder_name.lower().strip()
+
+    # First try exact match
     cursor.execute(
         """
         SELECT name, path
@@ -67,6 +70,26 @@ def find_folder(folder_name):
         LIMIT 1
         """,
         (folder_name,)
+    )
+
+    result = cursor.fetchone()
+
+    if result:
+        connection.close()
+        return result
+
+    # Second attempt:
+    # Ignore spaces when comparing names
+    normalized_name = folder_name.replace(" ", "")
+
+    cursor.execute(
+        """
+        SELECT name, path
+        FROM folders
+        WHERE REPLACE(LOWER(name), ' ', '') = ?
+        LIMIT 1
+        """,
+        (normalized_name,)
     )
 
     result = cursor.fetchone()
