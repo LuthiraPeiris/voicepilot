@@ -1,5 +1,9 @@
 from actions.folder_actions import open_folder, close_folder
 from actions.app_actions import open_application, close_application
+from actions.file_actions import (
+    create_folder,
+    open_file,
+)
 from actions.system_actions import (
     volume_up,
     volume_down,
@@ -58,6 +62,9 @@ def action_succeeded(response):
         "cancelled",
         "permission denied",
         "not currently open",
+        "already exists",
+        "cannot be empty",
+        "don't recognize",
     ]
 
     for phrase in failure_phrases:
@@ -183,10 +190,6 @@ def process_command(command):
 
     # --------------------------------------------------
     # UNMUTE AUDIO
-    #
-    # For now, mute_volume() uses the Windows mute
-    # toggle key, so this performs the same system
-    # action as "mute".
     # --------------------------------------------------
 
     elif command in [
@@ -200,6 +203,100 @@ def process_command(command):
         return create_result(
             response=response,
             intent="UNMUTE_VOLUME",
+            success=action_succeeded(response),
+        )
+
+    # --------------------------------------------------
+    # LOCK COMPUTER
+    # --------------------------------------------------
+
+    elif command in [
+        "lock computer",
+        "lock pc",
+        "lock my computer",
+    ]:
+        response = lock_computer()
+
+        return create_result(
+            response=response,
+            intent="LOCK_COMPUTER",
+            success=response == "LOCKED",
+        )
+
+    # --------------------------------------------------
+    # RESTART COMPUTER
+    # --------------------------------------------------
+
+    elif command in [
+        "restart computer",
+        "restart pc",
+        "restart my computer",
+    ]:
+        response = restart_computer()
+
+        return create_result(
+            response=response,
+            intent="RESTART_COMPUTER",
+            success=response == "RESTARTING",
+        )
+
+    # --------------------------------------------------
+    # SHUTDOWN COMPUTER
+    # --------------------------------------------------
+
+    elif command in [
+        "shutdown computer",
+        "shut down computer",
+        "shutdown pc",
+        "shut down pc",
+        "turn off computer",
+    ]:
+        response = shutdown_computer()
+
+        return create_result(
+            response=response,
+            intent="SHUTDOWN_COMPUTER",
+            success=response == "SHUTTING_DOWN",
+        )
+
+    # --------------------------------------------------
+    # CREATE FOLDER
+    # --------------------------------------------------
+
+    elif command.startswith("create folder "):
+        folder_name = command.replace(
+            "create folder ",
+            "",
+            1
+        ).strip()
+
+        response = create_folder(folder_name)
+
+        return create_result(
+            response=response,
+            intent="CREATE_FOLDER",
+            success=action_succeeded(response),
+        )
+
+    # --------------------------------------------------
+    # OPEN FILE
+    #
+    # This must come before the generic "open "
+    # application command.
+    # --------------------------------------------------
+
+    elif command.startswith("open file "):
+        file_path = command.replace(
+            "open file ",
+            "",
+            1
+        ).strip()
+
+        response = open_file(file_path)
+
+        return create_result(
+            response=response,
+            intent="OPEN_FILE",
             success=action_succeeded(response),
         )
 
@@ -298,59 +395,6 @@ def process_command(command):
             response=response,
             intent="OPEN_APP",
             success=action_succeeded(response),
-        )
-
-        # --------------------------------------------------
-    # LOCK COMPUTER
-    # --------------------------------------------------
-
-    elif command in [
-        "lock computer",
-        "lock pc",
-        "lock my computer",
-    ]:
-        response = lock_computer()
-
-        return create_result(
-            response=response,
-            intent="LOCK_COMPUTER",
-            success=response == "LOCKED",
-        )
-
-    # --------------------------------------------------
-    # RESTART COMPUTER
-    # --------------------------------------------------
-
-    elif command in [
-        "restart computer",
-        "restart pc",
-        "restart my computer",
-    ]:
-        response = restart_computer()
-
-        return create_result(
-            response=response,
-            intent="RESTART_COMPUTER",
-            success=response == "RESTARTING",
-        )
-
-    # --------------------------------------------------
-    # SHUTDOWN COMPUTER
-    # --------------------------------------------------
-
-    elif command in [
-        "shutdown computer",
-        "shut down computer",
-        "shutdown pc",
-        "shut down pc",
-        "turn off computer",
-    ]:
-        response = shutdown_computer()
-
-        return create_result(
-            response=response,
-            intent="SHUTDOWN_COMPUTER",
-            success=response == "SHUTTING_DOWN",
         )
 
     # --------------------------------------------------

@@ -5,6 +5,8 @@ SAFE_ACTIONS = {
     "open_application",
     "open_folder",
     "open_website",
+    "create_folder",
+    "open_file",
 }
 
 
