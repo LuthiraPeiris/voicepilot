@@ -7,14 +7,17 @@ SAFE_ACTIONS = {
     "open_website",
 }
 
+
 CONFIRM_ACTIONS = {
     "close_application",
+    "close_folder",
     "restart_computer",
     "shutdown_computer",
     "move_file",
     "rename_file",
     "rename_folder",
 }
+
 
 BLOCKED_ACTIONS = {
     "delete_system_file",

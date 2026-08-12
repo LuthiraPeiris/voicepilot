@@ -1,6 +1,7 @@
 from commands.parser import process_command
 from commands.normalizer import normalize_command
 from database.database import create_tables
+from database.history import save_command
 from speech.recorder import record_audio
 from speech.speech_to_text import transcribe_audio
 from speech.text_to_speech import speak
@@ -106,24 +107,37 @@ def active_mode():
             speak("Going idle.")
             return "SLEEP"
 
-        # Completely close VoicePilot
+        # Process the command
         result = process_command(command)
 
-        if result == "EXIT":
+        response = result["response"]
+        intent = result["intent"]
+        success = result["success"]
+
+        # Save command history
+        save_command(
+            command=command,
+            intent=intent,
+            success=success,
+        )
+
+        # Completely close VoicePilot
+        if response == "EXIT":
             return "EXIT"
 
-        print(result)
-        speak(result)
+        if response:
+            print(response)
+            speak(response)
 
 
 def main():
+    # Create required database tables
     create_tables()
 
     print("VoicePilot started.")
     print("Say 'VoicePilot' to activate.")
 
     while True:
-
         # Idle mode
         wait_for_wake_word()
 

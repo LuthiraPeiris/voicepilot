@@ -1,13 +1,11 @@
 import sqlite3
 from pathlib import Path
 
-
 DATABASE_PATH = Path("database") / "voicepilot.db"
 
 
 def get_connection():
     connection = sqlite3.connect(DATABASE_PATH)
-
     return connection
 
 
@@ -21,6 +19,18 @@ def create_tables():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             path TEXT NOT NULL UNIQUE
+        )
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS command_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            command TEXT NOT NULL,
+            intent TEXT,
+            success INTEGER NOT NULL DEFAULT 1,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
