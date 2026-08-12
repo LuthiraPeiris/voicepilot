@@ -1,19 +1,32 @@
 from commands.parser import process_command
 from database.database import create_tables
-from pathlib import Path
-
-print("Current project location:", Path.cwd())
+from speech.recorder import record_audio
+from speech.speech_to_text import transcribe_audio
 
 
 def main():
-    
     create_tables()
 
     print("VoicePilot started.")
-    print("Type 'exit' to stop.")
+    print("Say a command after each listening prompt.")
+    print("Say 'exit' to stop.")
 
     while True:
-        command = input("\nEnter command: ")
+        audio_path = record_audio(duration=5)
+
+        if not audio_path:
+            print("Recording failed. Try again.")
+            continue
+
+        print("Transcribing...")
+
+        command = transcribe_audio(audio_path)
+
+        if not command:
+            print("I couldn't understand what you said.")
+            continue
+
+        print(f"You said: {command}")
 
         result = process_command(command)
 
