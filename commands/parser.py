@@ -1,5 +1,13 @@
 from actions.folder_actions import open_folder, close_folder
 from actions.app_actions import open_application, close_application
+from actions.system_actions import (
+    volume_up,
+    volume_down,
+    mute_volume,
+    lock_computer,
+    restart_computer,
+    shutdown_computer,
+)
 from database.indexer import build_folder_index
 from security.permissions import request_permission
 
@@ -120,10 +128,85 @@ def process_command(command):
         )
 
     # --------------------------------------------------
+    # SYSTEM VOLUME - UP
+    # --------------------------------------------------
+
+    elif command in [
+        "volume up",
+        "increase volume",
+        "turn volume up",
+        "raise volume",
+    ]:
+        response = volume_up()
+
+        return create_result(
+            response=response,
+            intent="VOLUME_UP",
+            success=action_succeeded(response),
+        )
+
+    # --------------------------------------------------
+    # SYSTEM VOLUME - DOWN
+    # --------------------------------------------------
+
+    elif command in [
+        "volume down",
+        "decrease volume",
+        "turn volume down",
+        "lower volume",
+    ]:
+        response = volume_down()
+
+        return create_result(
+            response=response,
+            intent="VOLUME_DOWN",
+            success=action_succeeded(response),
+        )
+
+    # --------------------------------------------------
+    # MUTE AUDIO
+    # --------------------------------------------------
+
+    elif command in [
+        "mute",
+        "mute volume",
+        "mute audio",
+        "mute sound",
+    ]:
+        response = mute_volume()
+
+        return create_result(
+            response=response,
+            intent="MUTE_VOLUME",
+            success=action_succeeded(response),
+        )
+
+    # --------------------------------------------------
+    # UNMUTE AUDIO
+    #
+    # For now, mute_volume() uses the Windows mute
+    # toggle key, so this performs the same system
+    # action as "mute".
+    # --------------------------------------------------
+
+    elif command in [
+        "unmute",
+        "unmute volume",
+        "unmute audio",
+        "unmute sound",
+    ]:
+        response = mute_volume()
+
+        return create_result(
+            response=response,
+            intent="UNMUTE_VOLUME",
+            success=action_succeeded(response),
+        )
+
+    # --------------------------------------------------
     # CLOSE FOLDER
     #
-    # Important:
-    # This must come BEFORE the generic "close "
+    # This must come before the generic "close "
     # application command.
     # --------------------------------------------------
 
@@ -215,6 +298,59 @@ def process_command(command):
             response=response,
             intent="OPEN_APP",
             success=action_succeeded(response),
+        )
+
+        # --------------------------------------------------
+    # LOCK COMPUTER
+    # --------------------------------------------------
+
+    elif command in [
+        "lock computer",
+        "lock pc",
+        "lock my computer",
+    ]:
+        response = lock_computer()
+
+        return create_result(
+            response=response,
+            intent="LOCK_COMPUTER",
+            success=response == "LOCKED",
+        )
+
+    # --------------------------------------------------
+    # RESTART COMPUTER
+    # --------------------------------------------------
+
+    elif command in [
+        "restart computer",
+        "restart pc",
+        "restart my computer",
+    ]:
+        response = restart_computer()
+
+        return create_result(
+            response=response,
+            intent="RESTART_COMPUTER",
+            success=response == "RESTARTING",
+        )
+
+    # --------------------------------------------------
+    # SHUTDOWN COMPUTER
+    # --------------------------------------------------
+
+    elif command in [
+        "shutdown computer",
+        "shut down computer",
+        "shutdown pc",
+        "shut down pc",
+        "turn off computer",
+    ]:
+        response = shutdown_computer()
+
+        return create_result(
+            response=response,
+            intent="SHUTDOWN_COMPUTER",
+            success=response == "SHUTTING_DOWN",
         )
 
     # --------------------------------------------------
