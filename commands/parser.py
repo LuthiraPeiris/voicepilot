@@ -4,6 +4,9 @@ from actions.system_actions import (
     volume_up,
     volume_down,
     mute_volume,
+    lock_computer,
+    restart_computer,
+    shutdown_computer,
 )
 from database.indexer import build_folder_index
 from security.permissions import request_permission
@@ -295,6 +298,59 @@ def process_command(command):
             response=response,
             intent="OPEN_APP",
             success=action_succeeded(response),
+        )
+
+        # --------------------------------------------------
+    # LOCK COMPUTER
+    # --------------------------------------------------
+
+    elif command in [
+        "lock computer",
+        "lock pc",
+        "lock my computer",
+    ]:
+        response = lock_computer()
+
+        return create_result(
+            response=response,
+            intent="LOCK_COMPUTER",
+            success=response == "LOCKED",
+        )
+
+    # --------------------------------------------------
+    # RESTART COMPUTER
+    # --------------------------------------------------
+
+    elif command in [
+        "restart computer",
+        "restart pc",
+        "restart my computer",
+    ]:
+        response = restart_computer()
+
+        return create_result(
+            response=response,
+            intent="RESTART_COMPUTER",
+            success=response == "RESTARTING",
+        )
+
+    # --------------------------------------------------
+    # SHUTDOWN COMPUTER
+    # --------------------------------------------------
+
+    elif command in [
+        "shutdown computer",
+        "shut down computer",
+        "shutdown pc",
+        "shut down pc",
+        "turn off computer",
+    ]:
+        response = shutdown_computer()
+
+        return create_result(
+            response=response,
+            intent="SHUTDOWN_COMPUTER",
+            success=response == "SHUTTING_DOWN",
         )
 
     # --------------------------------------------------

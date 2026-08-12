@@ -1,4 +1,7 @@
 import ctypes
+import subprocess
+
+from security.permissions import request_permission
 
 
 # Windows virtual key codes
@@ -67,3 +70,81 @@ def mute_volume():
         return "Toggling mute."
 
     return "I couldn't change the mute setting."
+
+
+def lock_computer():
+    """
+    Lock the Windows computer.
+    """
+
+    try:
+        result = ctypes.windll.user32.LockWorkStation()
+
+        if result:
+            return "LOCKED"
+
+        return "I couldn't lock the computer."
+
+    except Exception as error:
+        print(f"Lock computer error: {error}")
+        return "I couldn't lock the computer."
+
+
+def restart_computer():
+    """
+    Restart Windows after receiving confirmation.
+    """
+
+    allowed = request_permission(
+        "restart_computer",
+        "Do you want me to restart the computer?"
+    )
+
+    if not allowed:
+        return "Restart cancelled."
+
+    try:
+        subprocess.Popen(
+            [
+                "shutdown",
+                "/r",
+                "/t",
+                "0",
+            ]
+        )
+
+        return "RESTARTING"
+
+    except Exception as error:
+        print(f"Restart error: {error}")
+        return "I couldn't restart the computer."
+
+
+def shutdown_computer():
+    """
+    Shut down Windows after receiving confirmation.
+    """
+
+    allowed = request_permission(
+        "shutdown_computer",
+        "Do you want me to shut down the computer?"
+    )
+
+    if not allowed:
+        return "Shutdown cancelled."
+
+    try:
+        subprocess.Popen(
+            [
+                "shutdown",
+                "/s",
+                "/t",
+                "0",
+            ]
+        )
+
+        return "SHUTTING_DOWN"
+
+    except Exception as error:
+        print(f"Shutdown error: {error}")
+        return "I couldn't shut down the computer."

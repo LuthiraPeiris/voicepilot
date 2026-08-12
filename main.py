@@ -85,6 +85,21 @@ def is_sleep_command(command):
     return command in SLEEP_COMMANDS
 
 
+def get_spoken_response(response):
+    """
+    Convert internal action responses into natural
+    responses for text-to-speech.
+    """
+
+    special_responses = {
+        "LOCKED": "Locking your computer.",
+        "RESTARTING": "Restarting your computer.",
+        "SHUTTING_DOWN": "Shutting down your computer.",
+    }
+
+    return special_responses.get(response, response)
+
+
 def active_mode():
     """
     Keep accepting commands until the user tells
@@ -126,8 +141,10 @@ def active_mode():
             return "EXIT"
 
         if response:
-            print(response)
-            speak(response)
+            spoken_response = get_spoken_response(response)
+
+            print(spoken_response)
+            speak(spoken_response)
 
 
 def main():
