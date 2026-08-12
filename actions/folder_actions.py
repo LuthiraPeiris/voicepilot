@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from security.permissions import request_permission
 
 from database.database import find_folder
 
@@ -64,6 +65,8 @@ def open_folder(folder_name):
     First checks common Windows folders.
     If it is not a common folder, search the SQLite folder index.
     """
+    if not request_permission("open_folder"):
+        return "Permission denied."
 
     folder_name = folder_name.lower().strip()
 
