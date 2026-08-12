@@ -1,4 +1,5 @@
 from commands.parser import process_command
+from commands.normalizer import normalize_command
 from database.database import create_tables
 from speech.recorder import record_audio
 from speech.speech_to_text import transcribe_audio
@@ -20,13 +21,17 @@ def main():
 
         print("Transcribing...")
 
-        command = transcribe_audio(audio_path)
+        raw_command = transcribe_audio(audio_path)
 
-        if not command:
+        if not raw_command:
             print("I couldn't understand what you said.")
             continue
 
-        print(f"You said: {command}")
+        print(f"You said: {raw_command}")
+
+        command = normalize_command(raw_command)
+
+        print(f"Normalized: {command}")
 
         result = process_command(command)
 
