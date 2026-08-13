@@ -1,8 +1,7 @@
-import os
-
 from actions.folder_actions import (
     open_folder,
     close_folder,
+    navigate_to_parent_folder,
 )
 
 from actions.app_actions import (
@@ -15,6 +14,8 @@ from actions.file_actions import (
     create_file,
     delete_file,
     delete_folder,
+    rename_file,
+    rename_folder,
     open_file,
     has_pending_file_selection,
     select_pending_file,
@@ -31,7 +32,13 @@ from actions.system_actions import (
 
 from context.folder_context import (
     get_current_folder,
-    go_to_parent_folder,
+)
+
+from context.rename_context import (
+    set_pending_rename,
+    get_pending_rename,
+    has_pending_rename,
+    clear_pending_rename,
 )
 
 from database.indexer import build_folder_index
@@ -43,15 +50,6 @@ def create_result(
     intent,
     success=True,
 ):
-    """
-    Create a standard command result.
-
-    Every command processed by VoicePilot returns:
-    - response
-    - intent
-    - success
-    """
-
     return {
         "response": response,
         "intent": intent,
@@ -60,11 +58,6 @@ def create_result(
 
 
 def action_succeeded(response):
-    """
-    Temporarily determine whether an action
-    succeeded based on its response.
-    """
-
     if not response:
         return False
 
@@ -104,7 +97,7 @@ def process_command(command):
     command = command.lower().strip()
 
     # --------------------------------------------------
-    # EXIT VOICEPILOT
+    # EXIT
     # --------------------------------------------------
 
     if command == "exit":
@@ -115,7 +108,7 @@ def process_command(command):
         )
 
     # --------------------------------------------------
-    # REFRESH FILE / FOLDER INDEX
+    # REFRESH INDEX
     # --------------------------------------------------
 
     elif command in [
@@ -128,8 +121,7 @@ def process_command(command):
 
             return create_result(
                 response=(
-                    "File and folder index "
-                    "refreshed."
+                    "File and folder index refreshed."
                 ),
                 intent="REFRESH_INDEX",
                 success=True,
@@ -150,7 +142,7 @@ def process_command(command):
             )
 
     # --------------------------------------------------
-    # TEST SECURITY CONFIRMATION
+    # TEST CONFIRMATION
     # --------------------------------------------------
 
     elif command == "test confirmation":
@@ -165,7 +157,7 @@ def process_command(command):
         if allowed:
             return create_result(
                 response="Confirmation accepted.",
-                intent="TEST_CONFIRMIRMATION",
+                intent="TEST_CONFIRMATION",
                 success=True,
             )
 
@@ -256,7 +248,7 @@ def process_command(command):
         )
 
     # --------------------------------------------------
-    # LOCK COMPUTER
+    # LOCK
     # --------------------------------------------------
 
     elif command in [
@@ -273,7 +265,7 @@ def process_command(command):
         )
 
     # --------------------------------------------------
-    # RESTART COMPUTER
+    # RESTART
     # --------------------------------------------------
 
     elif command in [
@@ -292,7 +284,7 @@ def process_command(command):
         )
 
     # --------------------------------------------------
-    # SHUTDOWN COMPUTER
+    # SHUTDOWN
     # --------------------------------------------------
 
     elif command in [
@@ -313,9 +305,11 @@ def process_command(command):
             ),
         )
 
-    # ==================================================
-    # GO BACK / GO UP
-    # ==================================================
+    # --------------------------------------------------
+    # GO BACK
+    #
+    # Reuses the same Explorer window/tab.
+    # --------------------------------------------------
 
     elif command in [
         "go back",
@@ -325,73 +319,19 @@ def process_command(command):
         "parent folder",
         "one folder back",
     ]:
-        current_folder = get_current_folder()
+        result = (
+            navigate_to_parent_folder()
+        )
 
-        if not current_folder:
-            return create_result(
-                response=(
-                    "There is no current folder."
-                ),
-                intent="GO_BACK",
-                success=False,
-            )
+        return create_result(
+            response=result["response"],
+            intent="GO_BACK",
+            success=result["success"],
+        )
 
-        previous_folder = current_folder
-
-        new_folder = go_to_parent_folder()
-
-        if not new_folder:
-            return create_result(
-                response=(
-                    "I couldn't go to the "
-                    "parent folder."
-                ),
-                intent="GO_BACK",
-                success=False,
-            )
-
-        # Already at drive root.
-        if new_folder == previous_folder:
-            return create_result(
-                response=(
-                    "You are already at the "
-                    "top-level folder."
-                ),
-                intent="GO_BACK",
-                success=False,
-            )
-
-        try:
-            os.startfile(
-                new_folder
-            )
-
-            return create_result(
-                response=(
-                    f"Going back to "
-                    f"{new_folder.name}."
-                ),
-                intent="GO_BACK",
-                success=True,
-            )
-
-        except OSError as error:
-            print(
-                f"Go back error: {error}"
-            )
-
-            return create_result(
-                response=(
-                    "I changed the current folder, "
-                    "but I couldn't open it."
-                ),
-                intent="GO_BACK",
-                success=False,
-            )
-
-    # ==================================================
+    # --------------------------------------------------
     # WHERE AM I
-    # ==================================================
+    # --------------------------------------------------
 
     elif command in [
         "where am i",
@@ -430,9 +370,9 @@ def process_command(command):
             success=True,
         )
 
-    # ==================================================
+    # --------------------------------------------------
     # CREATE FILE
-    # ==================================================
+    # --------------------------------------------------
 
     elif command.startswith(
         "create file "
@@ -480,9 +420,231 @@ def process_command(command):
             ),
         )
 
-    # ==================================================
+    # --------------------------------------------------
+    # RENAME FILE - ONE COMMAND
+    # --------------------------------------------------
+
+    elif (
+        command.startswith(
+            "rename file "
+        )
+        and " to " in command
+    ):
+        content = command.replace(
+            "rename file ",
+            "",
+            1,
+        )
+
+        old_name, new_name = (
+            content.split(
+                " to ",
+                1,
+            )
+        )
+
+        clear_pending_rename()
+
+        response = rename_file(
+            old_name.strip(),
+            new_name.strip(),
+        )
+
+        return create_result(
+            response=response,
+            intent="RENAME_FILE",
+            success=action_succeeded(
+                response
+            ),
+        )
+
+    # --------------------------------------------------
+    # RENAME FOLDER - ONE COMMAND
+    # --------------------------------------------------
+
+    elif (
+        command.startswith(
+            "rename folder "
+        )
+        and " to " in command
+    ):
+        content = command.replace(
+            "rename folder ",
+            "",
+            1,
+        )
+
+        old_name, new_name = (
+            content.split(
+                " to ",
+                1,
+            )
+        )
+
+        clear_pending_rename()
+
+        response = rename_folder(
+            old_name.strip(),
+            new_name.strip(),
+        )
+
+        return create_result(
+            response=response,
+            intent="RENAME_FOLDER",
+            success=action_succeeded(
+                response
+            ),
+        )
+
+    # --------------------------------------------------
+    # START TWO-STEP FILE RENAME
+    # --------------------------------------------------
+
+    elif command.startswith(
+        "rename file "
+    ):
+        old_name = command.replace(
+            "rename file ",
+            "",
+            1,
+        ).strip()
+
+        if not old_name:
+            return create_result(
+                response=(
+                    "Tell me which file "
+                    "you want to rename."
+                ),
+                intent="RENAME_FILE_START",
+                success=False,
+            )
+
+        set_pending_rename(
+            "file",
+            old_name,
+        )
+
+        return create_result(
+            response=(
+                "What should I rename it to?"
+            ),
+            intent="RENAME_FILE_START",
+            success=True,
+        )
+
+    # --------------------------------------------------
+    # START TWO-STEP FOLDER RENAME
+    # --------------------------------------------------
+
+    elif command.startswith(
+        "rename folder "
+    ):
+        old_name = command.replace(
+            "rename folder ",
+            "",
+            1,
+        ).strip()
+
+        if not old_name:
+            return create_result(
+                response=(
+                    "Tell me which folder "
+                    "you want to rename."
+                ),
+                intent="RENAME_FOLDER_START",
+                success=False,
+            )
+
+        set_pending_rename(
+            "folder",
+            old_name,
+        )
+
+        return create_result(
+            response=(
+                "What should I rename it to?"
+            ),
+            intent="RENAME_FOLDER_START",
+            success=True,
+        )
+
+    # --------------------------------------------------
+    # PENDING RENAME RESPONSE
+    # --------------------------------------------------
+
+    elif has_pending_rename():
+        pending = (
+            get_pending_rename()
+        )
+
+        if command in [
+            "cancel",
+            "never mind",
+            "nevermind",
+            "stop",
+        ]:
+            clear_pending_rename()
+
+            return create_result(
+                response="Rename cancelled.",
+                intent="RENAME_CANCEL",
+                success=False,
+            )
+
+        item_type = (
+            pending["type"]
+        )
+
+        old_name = (
+            pending["old_name"]
+        )
+
+        new_name = (
+            command.strip()
+        )
+
+        clear_pending_rename()
+
+        if item_type == "file":
+            response = rename_file(
+                old_name,
+                new_name,
+            )
+
+            return create_result(
+                response=response,
+                intent="RENAME_FILE",
+                success=action_succeeded(
+                    response
+                ),
+            )
+
+        if item_type == "folder":
+            response = rename_folder(
+                old_name,
+                new_name,
+            )
+
+            return create_result(
+                response=response,
+                intent="RENAME_FOLDER",
+                success=action_succeeded(
+                    response
+                ),
+            )
+
+        return create_result(
+            response=(
+                "I couldn't complete "
+                "the rename."
+            ),
+            intent="RENAME",
+            success=False,
+        )
+
+    # --------------------------------------------------
     # DELETE FILE
-    # ==================================================
+    # --------------------------------------------------
 
     elif command.startswith(
         "delete file "
@@ -505,9 +667,9 @@ def process_command(command):
             ),
         )
 
-    # ==================================================
+    # --------------------------------------------------
     # DELETE FOLDER
-    # ==================================================
+    # --------------------------------------------------
 
     elif command.startswith(
         "delete folder "
@@ -597,7 +759,9 @@ def process_command(command):
     # CLOSE APPLICATION
     # --------------------------------------------------
 
-    elif command.startswith("close "):
+    elif command.startswith(
+        "close "
+    ):
         app_name = command.replace(
             "close ",
             "",
@@ -645,7 +809,9 @@ def process_command(command):
     # OPEN APPLICATION OR COMMON FOLDER
     # --------------------------------------------------
 
-    elif command.startswith("open "):
+    elif command.startswith(
+        "open "
+    ):
         target = command.replace(
             "open ",
             "",
@@ -702,7 +868,7 @@ def process_command(command):
         )
 
     # --------------------------------------------------
-    # UNKNOWN COMMAND
+    # UNKNOWN
     # --------------------------------------------------
 
     return create_result(

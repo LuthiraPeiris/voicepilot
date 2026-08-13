@@ -1,4 +1,6 @@
-from security.confirmation import ask_for_confirmation
+from security.confirmation import (
+    ask_for_confirmation,
+)
 
 
 SAFE_ACTIONS = {
@@ -8,7 +10,6 @@ SAFE_ACTIONS = {
     "create_folder",
     "create_file",
     "open_file",
-    "copy_file",
 }
 
 
@@ -17,7 +18,6 @@ CONFIRM_ACTIONS = {
     "close_folder",
     "restart_computer",
     "shutdown_computer",
-    "move_file",
     "rename_file",
     "rename_folder",
     "delete_file",
@@ -32,7 +32,9 @@ BLOCKED_ACTIONS = {
 }
 
 
-def get_permission_level(action_name):
+def get_permission_level(
+    action_name,
+):
     if action_name in SAFE_ACTIONS:
         return "SAFE"
 

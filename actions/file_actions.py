@@ -241,8 +241,6 @@ def find_files_in_current_folder(file_name):
     """
     Search only inside VoicePilot's current
     working folder.
-
-    Direct children are searched first.
     """
 
     current_folder = get_current_folder()
@@ -291,10 +289,9 @@ def find_files_in_current_folder(file_name):
                         str(item),
                     )
                 )
-
                 continue
 
-            # Exact filename without extension
+            # Exact name without extension
             if stem == file_name:
                 matches.append(
                     (
@@ -303,7 +300,6 @@ def find_files_in_current_folder(file_name):
                         str(item),
                     )
                 )
-
                 continue
 
             # Ignore spaces
@@ -318,7 +314,6 @@ def find_files_in_current_folder(file_name):
                         str(item),
                     )
                 )
-
                 continue
 
             # Partial match
@@ -404,6 +399,214 @@ def find_folder_in_current_folder(
         return None
 
     return None
+
+
+# ==================================================
+# RENAME FILE
+# ==================================================
+
+
+def rename_file(
+    old_name,
+    new_name,
+):
+    """
+    Rename a file inside the current
+    working folder.
+
+    If the new filename has no extension,
+    the old extension is preserved.
+    """
+
+    current_folder = get_current_folder()
+
+    if not current_folder:
+        return (
+            "Open a folder first so I know "
+            "which file you want to rename."
+        )
+
+    match = find_file_in_current_folder(
+        old_name
+    )
+
+    if not match:
+        return (
+            f"I couldn't find a file called "
+            f"{old_name} in "
+            f"{current_folder.name}."
+        )
+
+    if match == "MULTIPLE":
+        return (
+            f"I found multiple files matching "
+            f"{old_name}. "
+            "Please be more specific."
+        )
+
+    name, extension, path = match
+
+    old_path = Path(path)
+
+    new_name = new_name.strip()
+
+    if not new_name:
+        return (
+            "The new file name "
+            "cannot be empty."
+        )
+
+    new_name_path = Path(
+        new_name
+    )
+
+    # Preserve existing extension if the user
+    # did not specify one.
+    if (
+        not new_name_path.suffix
+        and extension
+    ):
+        new_name = (
+            f"{new_name}{extension}"
+        )
+
+    target_path = (
+        current_folder / new_name
+    )
+
+    if target_path.exists():
+        return (
+            f"A file called "
+            f"{target_path.name} "
+            "already exists."
+        )
+
+    allowed = request_permission(
+        "rename_file",
+        (
+            f"Do you want me to rename "
+            f"{old_path.name} to "
+            f"{target_path.name}?"
+        ),
+    )
+
+    if not allowed:
+        return "Rename cancelled."
+
+    try:
+        old_name_for_response = (
+            old_path.name
+        )
+
+        old_path.rename(
+            target_path
+        )
+
+        return (
+            f"Renamed {old_name_for_response} "
+            f"to {target_path.name}."
+        )
+
+    except OSError as error:
+        print(
+            f"Rename file error: {error}"
+        )
+
+        return (
+            f"I couldn't rename "
+            f"{old_path.name}."
+        )
+
+
+# ==================================================
+# RENAME FOLDER
+# ==================================================
+
+
+def rename_folder(
+    old_name,
+    new_name,
+):
+    """
+    Rename a folder inside the current
+    working folder.
+    """
+
+    current_folder = get_current_folder()
+
+    if not current_folder:
+        return (
+            "Open a folder first so I know "
+            "which folder you want to rename."
+        )
+
+    folder_path = (
+        find_folder_in_current_folder(
+            old_name
+        )
+    )
+
+    if not folder_path:
+        return (
+            f"I couldn't find a folder "
+            f"called {old_name} in "
+            f"{current_folder.name}."
+        )
+
+    new_name = new_name.strip()
+
+    if not new_name:
+        return (
+            "The new folder name "
+            "cannot be empty."
+        )
+
+    target_path = (
+        current_folder / new_name
+    )
+
+    if target_path.exists():
+        return (
+            f"A folder called "
+            f"{new_name} already exists."
+        )
+
+    allowed = request_permission(
+        "rename_folder",
+        (
+            f"Do you want me to rename "
+            f"{folder_path.name} to "
+            f"{new_name}?"
+        ),
+    )
+
+    if not allowed:
+        return "Rename cancelled."
+
+    try:
+        old_folder_name = (
+            folder_path.name
+        )
+
+        folder_path.rename(
+            target_path
+        )
+
+        return (
+            f"Renamed folder "
+            f"{old_folder_name} "
+            f"to {target_path.name}."
+        )
+
+    except OSError as error:
+        print(
+            f"Rename folder error: {error}"
+        )
+
+        return (
+            f"I couldn't rename the "
+            f"{folder_path.name} folder."
+        )
 
 
 # ==================================================
@@ -526,13 +729,17 @@ def delete_folder(folder_name):
         return "Delete cancelled."
 
     try:
+        folder_name_for_response = (
+            folder_path.name
+        )
+
         send2trash(
             str(folder_path)
         )
 
         return (
             f"Moved the "
-            f"{folder_path.name} folder "
+            f"{folder_name_for_response} folder "
             "to the Recycle Bin."
         )
 
@@ -616,9 +823,6 @@ def open_file(file_name):
     Search order:
     1. Current working folder
     2. Global VoicePilot file index
-
-    If several files match, remember them and
-    ask the user to choose one.
     """
 
     global _pending_file_matches
@@ -643,10 +847,6 @@ def open_file(file_name):
             "needs_selection": False,
         }
 
-    # --------------------------------------------------
-    # CURRENT FOLDER FIRST
-    # --------------------------------------------------
-
     current_matches = (
         find_files_in_current_folder(
             file_name
@@ -657,10 +857,6 @@ def open_file(file_name):
         matches = current_matches
 
     else:
-        # --------------------------------------------------
-        # GLOBAL FILE INDEX FALLBACK
-        # --------------------------------------------------
-
         matches = find_files(
             file_name,
             limit=5,
@@ -700,10 +896,6 @@ def open_file(file_name):
             "needs_selection": False,
         }
 
-    # --------------------------------------------------
-    # ONE RESULT
-    # --------------------------------------------------
-
     if len(matches) == 1:
         _pending_file_matches = []
 
@@ -716,10 +908,6 @@ def open_file(file_name):
         ] = False
 
         return result
-
-    # --------------------------------------------------
-    # MULTIPLE RESULTS
-    # --------------------------------------------------
 
     _pending_file_matches = matches
 
@@ -762,11 +950,6 @@ def open_file(file_name):
 
 
 def has_pending_file_selection():
-    """
-    Check whether VoicePilot is waiting for the
-    user to choose between matching files.
-    """
-
     return bool(
         _pending_file_matches
     )
@@ -779,16 +962,6 @@ def clear_pending_file_selection():
 
 
 def select_pending_file(selection):
-    """
-    Resolve follow-up answers such as:
-
-    first
-    second
-    the second one
-    downloads
-    documents
-    """
-
     global _pending_file_matches
 
     if not _pending_file_matches:
@@ -850,10 +1023,6 @@ def select_pending_file(selection):
         "the fifth one": 4,
     }
 
-    # --------------------------------------------------
-    # SELECT BY NUMBER
-    # --------------------------------------------------
-
     if selection in ordinal_choices:
         index = ordinal_choices[
             selection
@@ -873,10 +1042,6 @@ def select_pending_file(selection):
             return _open_indexed_file(
                 match
             )
-
-    # --------------------------------------------------
-    # SELECT BY FOLDER / PATH
-    # --------------------------------------------------
 
     path_matches = []
 
