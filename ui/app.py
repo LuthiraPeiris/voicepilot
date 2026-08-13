@@ -4,6 +4,18 @@ import customtkinter as ctk
 
 from main import execute_command
 
+from context.folder_context import (
+    get_current_folder,
+)
+
+from context.rename_context import (
+    has_pending_rename,
+)
+
+from actions.file_actions import (
+    has_pending_file_selection,
+)
+
 from database.database import create_tables
 from database.watcher import (
     start_index_watcher,
@@ -27,6 +39,11 @@ ctk.set_default_color_theme(
 )
 
 
+# Small pause before VoicePilot automatically
+# begins listening for a follow-up response.
+FOLLOW_UP_DELAY = 400
+
+
 class VoicePilotApp(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -47,17 +64,22 @@ class VoicePilotApp(ctk.CTk):
         )
 
         self.geometry(
-            "500x650"
+            "500x720"
         )
 
         self.minsize(
             450,
-            550,
+            620,
         )
 
         self.center_window()
 
         self.is_listening = False
+
+        # Tells the UI whether the microphone
+        # is listening for a normal command
+        # or a response to a previous command.
+        self.is_follow_up = False
 
         # ------------------------------------------
         # DATABASE
@@ -112,7 +134,7 @@ class VoicePilotApp(ctk.CTk):
 
         self.title_label.pack(
             pady=(
-                30,
+                25,
                 5,
             )
         )
@@ -138,7 +160,7 @@ class VoicePilotApp(ctk.CTk):
         self.subtitle_label.pack(
             pady=(
                 0,
-                25,
+                20,
             )
         )
 
@@ -157,7 +179,7 @@ class VoicePilotApp(ctk.CTk):
             fill="x",
             pady=(
                 5,
-                15,
+                10,
             ),
         )
 
@@ -330,6 +352,68 @@ class VoicePilotApp(ctk.CTk):
         )
 
         # ------------------------------------------
+        # CURRENT FOLDER
+        # ------------------------------------------
+
+        self.folder_frame = (
+            ctk.CTkFrame(
+                self.main_frame,
+                corner_radius=12,
+            )
+        )
+
+        self.folder_frame.pack(
+            fill="x",
+            padx=25,
+            pady=(
+                0,
+                10,
+            ),
+        )
+
+        self.folder_title = (
+            ctk.CTkLabel(
+                self.folder_frame,
+                text="Current Folder",
+                font=ctk.CTkFont(
+                    size=13,
+                    weight="bold",
+                ),
+                text_color="gray70",
+            )
+        )
+
+        self.folder_title.pack(
+            anchor="w",
+            padx=15,
+            pady=(
+                12,
+                5,
+            ),
+        )
+
+        self.folder_label = (
+            ctk.CTkLabel(
+                self.folder_frame,
+                text="📁 No folder selected",
+                font=ctk.CTkFont(
+                    size=15,
+                ),
+                wraplength=380,
+                justify="left",
+            )
+        )
+
+        self.folder_label.pack(
+            anchor="w",
+            padx=15,
+            pady=(
+                0,
+                15,
+            ),
+        )
+
+        # ------------------------------------------
         # STATUS
         # ------------------------------------------
 
@@ -350,42 +434,89 @@ class VoicePilotApp(ctk.CTk):
             )
         )
 
+        # ------------------------------------------
+        # INITIAL FOLDER DISPLAY
+        # ------------------------------------------
+
+        self.update_current_folder_display()
+
     # --------------------------------------------------
-    # MICROPHONE
+    # MICROPHONE BUTTON
     # --------------------------------------------------
 
     def handle_mic_click(self):
         """
-        Start VoicePilot listening when
-        the microphone button is clicked.
+        Start a normal command listening cycle
+        when the user clicks the microphone.
+        """
+
+        self.start_listening(
+            follow_up=False
+        )
+
+    # --------------------------------------------------
+    # START LISTENING
+    # --------------------------------------------------
+
+    def start_listening(
+        self,
+        follow_up=False,
+    ):
+        """
+        Start listening for either:
+
+        - a new VoicePilot command
+        - a follow-up response to a
+          previous command
         """
 
         if self.is_listening:
             return
 
         self.is_listening = True
+        self.is_follow_up = follow_up
 
         self.status_label.configure(
             text="● Listening..."
         )
 
-        self.listen_label.configure(
-            text="Listening..."
-        )
+        if follow_up:
+            self.listen_label.configure(
+                text="Listening for response..."
+            )
+
+            self.command_label.configure(
+                text=(
+                    "Listening for "
+                    "your response..."
+                )
+            )
+
+            # Do NOT clear the VoicePilot
+            # response during a follow-up.
+            #
+            # The user should still be able
+            # to see the question that
+            # VoicePilot just asked.
+
+        else:
+            self.listen_label.configure(
+                text="Listening..."
+            )
+
+            self.command_label.configure(
+                text=(
+                    "Listening for "
+                    "your command..."
+                )
+            )
+
+            self.response_label.configure(
+                text="..."
+            )
 
         self.mic_button.configure(
             state="disabled"
-        )
-
-        self.command_label.configure(
-            text=(
-                "Listening for "
-                "your command..."
-            )
-        )
-
-        self.response_label.configure(
-            text="..."
         )
 
         worker_thread = (
@@ -413,6 +544,13 @@ class VoicePilotApp(ctk.CTk):
         -> parser
         -> action
         -> response
+
+        The parser decides whether the
+        transcription is:
+
+        - a new command
+        - a rename response
+        - a file-selection response
         """
 
         audio_path = record_audio()
@@ -456,7 +594,8 @@ class VoicePilotApp(ctk.CTk):
         )
 
         # ------------------------------------------
-        # EXECUTE EXISTING VOICEPILOT COMMAND
+        # EXECUTE THROUGH EXISTING
+        # VOICEPILOT COMMAND ENGINE
         # ------------------------------------------
 
         result = execute_command(
@@ -504,6 +643,93 @@ class VoicePilotApp(ctk.CTk):
         )
 
     # --------------------------------------------------
+    # CHECK FOLLOW-UP STATE
+    # --------------------------------------------------
+
+    def needs_follow_up(self):
+        """
+        Return True when VoicePilot is
+        currently waiting for another
+        spoken response.
+
+        Examples:
+
+        rename file notes
+        -> waiting for new name
+
+        open file report
+        -> multiple matches found
+        -> waiting for selection
+        """
+
+        if has_pending_rename():
+            return True
+
+        if has_pending_file_selection():
+            return True
+
+        return False
+
+    # --------------------------------------------------
+    # AUTOMATIC FOLLOW-UP
+    # --------------------------------------------------
+
+    def begin_follow_up(self):
+        """
+        Automatically start listening again
+        when VoicePilot is waiting for more
+        information.
+        """
+
+        if self.is_listening:
+            return
+
+        if not self.needs_follow_up():
+            return
+
+        print(
+            "Waiting for follow-up response..."
+        )
+
+        self.start_listening(
+            follow_up=True
+        )
+
+    # --------------------------------------------------
+    # CURRENT FOLDER DISPLAY
+    # --------------------------------------------------
+
+    def update_current_folder_display(self):
+        """
+        Refresh the current folder shown
+        inside the VoicePilot UI.
+        """
+
+        current_folder = (
+            get_current_folder()
+        )
+
+        if not current_folder:
+            self.folder_label.configure(
+                text="📁 No folder selected"
+            )
+
+            return
+
+        folder_name = (
+            current_folder.name
+        )
+
+        if not folder_name:
+            folder_name = str(
+                current_folder
+            )
+
+        self.folder_label.configure(
+            text=f"📁 {folder_name}"
+        )
+
+    # --------------------------------------------------
     # COMMAND COMPLETE
     # --------------------------------------------------
 
@@ -512,12 +738,18 @@ class VoicePilotApp(ctk.CTk):
         result,
     ):
         self.is_listening = False
+        self.is_follow_up = False
 
-        self.mic_button.configure(
-            state="normal"
-        )
+        # ------------------------------------------
+        # UPDATE CURRENT FOLDER
+        # ------------------------------------------
 
-        # Prefer the natural spoken response.
+        self.update_current_folder_display()
+
+        # ------------------------------------------
+        # RESPONSE
+        # ------------------------------------------
+
         response = result.get(
             "spoken_response"
         )
@@ -539,6 +771,61 @@ class VoicePilotApp(ctk.CTk):
             text=response
         )
 
+        # ------------------------------------------
+        # EXIT
+        # ------------------------------------------
+
+        if result.get("exit"):
+            self.status_label.configure(
+                text="● Closing..."
+            )
+
+            self.listen_label.configure(
+                text="Closing..."
+            )
+
+            self.after(
+                500,
+                self.close_application,
+            )
+
+            return
+
+        # ------------------------------------------
+        # FOLLOW-UP REQUIRED
+        # ------------------------------------------
+
+        if self.needs_follow_up():
+            self.status_label.configure(
+                text="● Waiting for response..."
+            )
+
+            self.listen_label.configure(
+                text="Waiting for response..."
+            )
+
+            # Keep the manual microphone
+            # disabled because VoicePilot
+            # is about to listen automatically.
+            self.mic_button.configure(
+                state="disabled"
+            )
+
+            self.after(
+                FOLLOW_UP_DELAY,
+                self.begin_follow_up,
+            )
+
+            return
+
+        # ------------------------------------------
+        # NORMAL COMMAND COMPLETE
+        # ------------------------------------------
+
+        self.mic_button.configure(
+            state="normal"
+        )
+
         self.status_label.configure(
             text="● Ready"
         )
@@ -547,22 +834,41 @@ class VoicePilotApp(ctk.CTk):
             text="Start Listening"
         )
 
-        # ------------------------------------------
-        # EXIT VOICEPILOT
-        # ------------------------------------------
-
-        if result.get("exit"):
-            self.after(
-                500,
-                self.close_application,
-            )
-
     # --------------------------------------------------
     # NO AUDIO
     # --------------------------------------------------
 
     def handle_no_audio(self):
         self.is_listening = False
+
+        # If VoicePilot was waiting for
+        # additional information, don't
+        # destroy the pending context.
+        if self.needs_follow_up():
+            self.mic_button.configure(
+                state="normal"
+            )
+
+            self.command_label.configure(
+                text="No response detected."
+            )
+
+            self.status_label.configure(
+                text="● Waiting for response"
+            )
+
+            self.listen_label.configure(
+                text="Tap to Respond"
+            )
+
+            self.response_label.configure(
+                text=(
+                    "I couldn't hear your response. "
+                    "Tap the microphone to try again."
+                )
+            )
+
+            return
 
         self.mic_button.configure(
             state="normal"
@@ -595,6 +901,38 @@ class VoicePilotApp(ctk.CTk):
         self,
     ):
         self.is_listening = False
+
+        # Preserve pending rename/file
+        # selection context so the user
+        # can try answering again.
+        if self.needs_follow_up():
+            self.mic_button.configure(
+                state="normal"
+            )
+
+            self.command_label.configure(
+                text=(
+                    "I couldn't understand "
+                    "your response."
+                )
+            )
+
+            self.response_label.configure(
+                text=(
+                    "Tap the microphone "
+                    "and try your response again."
+                )
+            )
+
+            self.status_label.configure(
+                text="● Waiting for response"
+            )
+
+            self.listen_label.configure(
+                text="Tap to Respond"
+            )
+
+            return
 
         self.mic_button.configure(
             state="normal"
@@ -634,7 +972,7 @@ class VoicePilotApp(ctk.CTk):
         self.update_idletasks()
 
         width = 500
-        height = 650
+        height = 720
 
         screen_width = (
             self.winfo_screenwidth()
