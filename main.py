@@ -1,7 +1,13 @@
 from commands.parser import process_command
 from commands.normalizer import normalize_command
+
 from database.database import create_tables
 from database.history import save_command
+from database.watcher import (
+    start_index_watcher,
+    stop_index_watcher,
+)
+
 from speech.recorder import record_audio
 from speech.speech_to_text import transcribe_audio
 from speech.text_to_speech import speak
@@ -87,8 +93,8 @@ def is_sleep_command(command):
 
 def get_spoken_response(response):
     """
-    Convert internal action responses into natural
-    responses for text-to-speech.
+    Convert internal action responses into
+    natural responses for text-to-speech.
     """
 
     special_responses = {
@@ -97,7 +103,10 @@ def get_spoken_response(response):
         "SHUTTING_DOWN": "Shutting down your computer.",
     }
 
-    return special_responses.get(response, response)
+    return special_responses.get(
+        response,
+        response,
+    )
 
 
 def active_mode():
@@ -107,7 +116,10 @@ def active_mode():
     """
 
     print("\nActive mode started.")
-    print("Say 'go to sleep' to return to idle mode.")
+    print(
+        "Say 'go to sleep' "
+        "to return to idle mode."
+    )
 
     while True:
         command = listen_for_command()
@@ -116,55 +128,112 @@ def active_mode():
             print("No command detected.")
             continue
 
-        # Return to wake-word mode
+        # ------------------------------------------
+        # RETURN TO WAKE-WORD MODE
+        # ------------------------------------------
+
         if is_sleep_command(command):
             print("VoicePilot going idle.")
             speak("Going idle.")
+
             return "SLEEP"
 
-        # Process the command
-        result = process_command(command)
+        # ------------------------------------------
+        # PROCESS COMMAND
+        # ------------------------------------------
+
+        result = process_command(
+            command
+        )
 
         response = result["response"]
         intent = result["intent"]
         success = result["success"]
 
-        # Save command history
+        # ------------------------------------------
+        # SAVE COMMAND HISTORY
+        # ------------------------------------------
+
         save_command(
             command=command,
             intent=intent,
             success=success,
         )
 
-        # Completely close VoicePilot
+        # ------------------------------------------
+        # COMPLETELY CLOSE VOICEPILOT
+        # ------------------------------------------
+
         if response == "EXIT":
             return "EXIT"
 
+        # ------------------------------------------
+        # SPEAK RESPONSE
+        # ------------------------------------------
+
         if response:
-            spoken_response = get_spoken_response(response)
+            spoken_response = (
+                get_spoken_response(
+                    response
+                )
+            )
 
             print(spoken_response)
-            speak(spoken_response)
+
+            speak(
+                spoken_response
+            )
 
 
 def main():
-    # Create required database tables
+    # ----------------------------------------------
+    # DATABASE
+    # ----------------------------------------------
+
     create_tables()
+
+    # ----------------------------------------------
+    # START AUTOMATIC FILE/FOLDER INDEX WATCHER
+    # ----------------------------------------------
+
+    observer = (
+        start_index_watcher()
+    )
 
     print("VoicePilot started.")
     print("Say 'VoicePilot' to activate.")
 
-    while True:
-        # Idle mode
-        wait_for_wake_word()
+    try:
+        while True:
+            # --------------------------------------
+            # IDLE MODE
+            # --------------------------------------
 
-        # Active conversational mode
-        result = active_mode()
+            wait_for_wake_word()
 
-        if result == "EXIT":
-            print("VoicePilot stopped.")
-            speak("Goodbye.")
-            break
+            # --------------------------------------
+            # ACTIVE MODE
+            # --------------------------------------
+
+            result = active_mode()
+
+            if result == "EXIT":
+                print(
+                    "VoicePilot stopped."
+                )
+
+                speak("Goodbye.")
+
+                break
+
+    finally:
+        # ------------------------------------------
+        # ALWAYS STOP WATCHER CLEANLY
+        # ------------------------------------------
+
+        stop_index_watcher(
+            observer
+        )
 
 
 if __name__ == "__main__":

@@ -294,3 +294,88 @@ def find_file(file_name):
         return None
 
     return results[0]
+
+
+def remove_file(path):
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        DELETE FROM files
+        WHERE path = ?
+        """,
+        (str(path),),
+    )
+
+    connection.commit()
+    connection.close()
+
+
+def remove_folder(path):
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    path = str(path)
+
+    cursor.execute(
+        """
+        DELETE FROM folders
+        WHERE path = ?
+        OR path LIKE ?
+        """,
+        (
+            path,
+            f"{path}\\%",
+        ),
+    )
+
+    cursor.execute(
+        """
+        DELETE FROM files
+        WHERE path LIKE ?
+        """,
+        (
+            f"{path}\\%",
+        ),
+    )
+
+    connection.commit()
+    connection.close()
+
+
+def update_file_path(
+    old_path,
+    new_path,
+):
+    """
+    Update an indexed file after it has been
+    renamed or moved.
+    """
+
+    old_path = Path(old_path)
+    new_path = Path(new_path)
+
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        DELETE FROM files
+        WHERE path = ?
+        """,
+        (str(old_path),),
+    )
+
+    connection.commit()
+    connection.close()
+
+    if (
+        new_path.exists()
+        and new_path.is_file()
+    ):
+        add_file(
+            new_path.stem,
+            new_path.suffix,
+            new_path,
+        )

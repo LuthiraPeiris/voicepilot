@@ -5,11 +5,13 @@ print(
     "Loading speech recognition model..."
 )
 
+
 model = WhisperModel(
     "base",
     device="cpu",
-    compute_type="int8"
+    compute_type="int8",
 )
+
 
 print(
     "Speech recognition model loaded."
@@ -19,17 +21,23 @@ print(
 def transcribe_audio(audio_path):
     """
     Convert an audio file into text using
-    faster-whisper with Silero VAD filtering.
+    faster-whisper.
+
+    Silero VAD removes most non-speech
+    sections before transcription.
     """
+
+    if not audio_path:
+        return None
 
     try:
         segments, info = model.transcribe(
             str(audio_path),
+
             language="en",
+
             beam_size=5,
 
-            # Remove non-speech sections
-            # before transcription.
             vad_filter=True,
 
             vad_parameters={
@@ -40,7 +48,10 @@ def transcribe_audio(audio_path):
         text_parts = []
 
         for segment in segments:
-            text = segment.text.strip()
+            text = (
+                segment.text
+                .strip()
+            )
 
             if text:
                 text_parts.append(
@@ -52,7 +63,16 @@ def transcribe_audio(audio_path):
         ).strip()
 
         if not text:
+            print(
+                "No speech could be "
+                "transcribed."
+            )
+
             return None
+
+        print(
+            f"Transcription: {text}"
+        )
 
         return text
 

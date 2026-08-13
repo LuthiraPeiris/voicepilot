@@ -12,49 +12,72 @@ CHANNELS = 1
 AUDIO_FOLDER = Path("audio")
 AUDIO_FILE = AUDIO_FOLDER / "command.wav"
 
+
+# Length of each captured audio block.
 BLOCK_DURATION = 0.1
+
+
+# Stop recording after this amount
+# of silence once speech has started.
 SILENCE_DURATION = 1.0
+
+
+# Maximum amount of time to listen
+# after calibration.
 MAX_DURATION = 10
 
-# How long VoicePilot listens to the room
-# before deciding what "background noise" sounds like.
+
+# Amount of time used to measure
+# background noise.
 NOISE_CALIBRATION_DURATION = 0.6
 
-# Minimum threshold so very quiet rooms
-# don't become overly sensitive.
+
+# Prevent very quiet rooms from making
+# the microphone too sensitive.
 MIN_SILENCE_THRESHOLD = 250
 
-# Background noise multiplier.
+
+# Background noise multiplier used to
+# determine the speech threshold.
 NOISE_MULTIPLIER = 2.5
 
 
 def calculate_volume(block):
     """
-    Calculate the average absolute amplitude
+    Calculate average absolute amplitude
     of an audio block.
     """
 
-    block_float = block.astype(np.float32)
+    block_float = block.astype(
+        np.float32
+    )
 
     return float(
         np.mean(
-            np.abs(block_float)
+            np.abs(
+                block_float
+            )
         )
     )
 
 
 def record_audio():
     """
-    Record audio until the user stops speaking.
+    Record audio until the user stops
+    speaking.
 
-    Improvements:
-    - Measures current background noise automatically
-    - Uses an adaptive speech threshold
-    - Stops after sustained silence
-    - Prevents very long recordings
+    Behaviour:
+    - Calibrates current background noise
+    - Detects when speech starts
+    - Records until sustained silence
+    - Stops after MAX_DURATION
+    - Returns None if no speech is detected
     """
 
-    AUDIO_FOLDER.mkdir(exist_ok=True)
+    AUDIO_FOLDER.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
     audio_queue = queue.Queue()
 
@@ -67,7 +90,9 @@ def record_audio():
     total_time = 0.0
     calibration_time = 0.0
 
-    silence_threshold = MIN_SILENCE_THRESHOLD
+    silence_threshold = (
+        MIN_SILENCE_THRESHOLD
+    )
 
     print("Listening...")
 
@@ -75,10 +100,12 @@ def record_audio():
         indata,
         frames,
         time,
-        status
+        status,
     ):
         if status:
-            print(status)
+            print(
+                f"Audio status: {status}"
+            )
 
         audio_queue.put(
             indata.copy()
@@ -96,15 +123,17 @@ def record_audio():
             callback=callback,
         ):
 
-            # ------------------------------------------
-            # CALIBRATE BACKGROUND NOISE
-            # ------------------------------------------
+            # ----------------------------------
+            # BACKGROUND NOISE CALIBRATION
+            # ----------------------------------
 
             while (
                 calibration_time
                 < NOISE_CALIBRATION_DURATION
             ):
-                block = audio_queue.get()
+                block = (
+                    audio_queue.get()
+                )
 
                 calibration_blocks.append(
                     block
@@ -127,7 +156,7 @@ def record_audio():
                     )
                 )
             else:
-                background_noise = 0
+                background_noise = 0.0
 
             silence_threshold = max(
                 MIN_SILENCE_THRESHOLD,
@@ -135,22 +164,35 @@ def record_audio():
                 * NOISE_MULTIPLIER,
             )
 
-            # ------------------------------------------
-            # RECORD COMMAND
-            # ------------------------------------------
 
-            while total_time < MAX_DURATION:
-                block = audio_queue.get()
+            # ----------------------------------
+            # RECORD SPEECH
+            # ----------------------------------
 
-                volume = calculate_volume(
-                    block
+            while (
+                total_time
+                < MAX_DURATION
+            ):
+                block = (
+                    audio_queue.get()
                 )
 
-                total_time += BLOCK_DURATION
+                volume = (
+                    calculate_volume(
+                        block
+                    )
+                )
 
-                if volume > silence_threshold:
+                total_time += (
+                    BLOCK_DURATION
+                )
+
+                if (
+                    volume
+                    > silence_threshold
+                ):
                     speech_started = True
-                    silence_time = 0
+                    silence_time = 0.0
 
                     recorded_blocks.append(
                         block
@@ -165,8 +207,8 @@ def record_audio():
                         BLOCK_DURATION
                     )
 
-                # Stop after the user has
-                # stopped speaking.
+                # Stop once the user has
+                # finished speaking.
                 if (
                     speech_started
                     and silence_time
@@ -174,32 +216,49 @@ def record_audio():
                 ):
                     break
 
+        # --------------------------------------
+        # NO SPEECH
+        # --------------------------------------
+
         if not speech_started:
-            print("No speech detected.")
+            print(
+                "No speech detected."
+            )
+
             return None
 
         if not recorded_blocks:
-            print("No audio recorded.")
+            print(
+                "No audio recorded."
+            )
+
             return None
+
+        # --------------------------------------
+        # SAVE AUDIO
+        # --------------------------------------
 
         recording = np.concatenate(
             recorded_blocks,
-            axis=0
+            axis=0,
         )
 
         write(
             AUDIO_FILE,
             SAMPLE_RATE,
-            recording
+            recording,
         )
 
-        print("Recording completed.")
+        print(
+            "Recording completed."
+        )
 
         return AUDIO_FILE
 
     except Exception as error:
         print(
-            f"Microphone error: {error}"
+            "Microphone error: "
+            f"{error}"
         )
 
         return None
