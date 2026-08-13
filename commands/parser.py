@@ -3,6 +3,8 @@ from actions.app_actions import open_application, close_application
 from actions.file_actions import (
     create_folder,
     open_file,
+    has_pending_file_selection,
+    select_pending_file,
 )
 from actions.system_actions import (
     volume_up,
@@ -89,25 +91,29 @@ def process_command(command):
         )
 
     # --------------------------------------------------
-    # REFRESH FOLDER INDEX
+    # REFRESH FILE / FOLDER INDEX
     # --------------------------------------------------
 
-    elif command == "refresh folders":
+    elif command in [
+        "refresh folders",
+        "refresh files",
+        "refresh index",
+    ]:
         try:
             build_folder_index()
 
             return create_result(
-                response="Folder index refreshed.",
-                intent="REFRESH_FOLDERS",
+                response="File and folder index refreshed.",
+                intent="REFRESH_INDEX",
                 success=True,
             )
 
         except Exception as error:
-            print(f"Folder indexing error: {error}")
+            print(f"Indexing error: {error}")
 
             return create_result(
-                response="I couldn't refresh the folder index.",
-                intent="REFRESH_FOLDERS",
+                response="I couldn't refresh the file and folder index.",
+                intent="REFRESH_INDEX",
                 success=False,
             )
 
@@ -281,30 +287,29 @@ def process_command(command):
     # --------------------------------------------------
     # OPEN FILE
     #
-    # This must come before the generic "open "
-    # application command.
+    # Explicit file commands must be checked BEFORE
+    # pending file-selection responses.
     # --------------------------------------------------
 
     elif command.startswith("open file "):
-        file_path = command.replace(
+        file_name = command.replace(
             "open file ",
             "",
             1
         ).strip()
 
-        response = open_file(file_path)
+        result = open_file(file_name)
 
         return create_result(
-            response=response,
+            response=result["response"],
             intent="OPEN_FILE",
-            success=action_succeeded(response),
+            success=result["success"],
         )
 
     # --------------------------------------------------
     # CLOSE FOLDER
     #
-    # This must come before the generic "close "
-    # application command.
+    # Must come before generic "close ".
     # --------------------------------------------------
 
     elif command.startswith("close folder "):
@@ -343,6 +348,8 @@ def process_command(command):
 
     # --------------------------------------------------
     # OPEN FOLDER
+    #
+    # Must come before generic "open ".
     # --------------------------------------------------
 
     elif command.startswith("open folder "):
@@ -395,6 +402,31 @@ def process_command(command):
             response=response,
             intent="OPEN_APP",
             success=action_succeeded(response),
+        )
+
+    # --------------------------------------------------
+    # PENDING FILE SELECTION
+    #
+    # This is intentionally near the bottom.
+    #
+    # Examples:
+    # "first"
+    # "second"
+    # "the third one"
+    # "downloads"
+    # "documents"
+    #
+    # Normal VoicePilot commands above always get
+    # priority over an old pending selection.
+    # --------------------------------------------------
+
+    elif has_pending_file_selection():
+        result = select_pending_file(command)
+
+        return create_result(
+            response=result["response"],
+            intent="OPEN_FILE_SELECTION",
+            success=result["success"],
         )
 
     # --------------------------------------------------

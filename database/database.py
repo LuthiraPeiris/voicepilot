@@ -6,17 +6,12 @@ DATABASE_PATH = Path("database") / "voicepilot.db"
 
 
 def get_connection():
-    connection = sqlite3.connect(DATABASE_PATH)
-    return connection
+    return sqlite3.connect(DATABASE_PATH)
 
 
 def create_tables():
     connection = get_connection()
     cursor = connection.cursor()
-
-    # --------------------------------------------------
-    # FOLDERS
-    # --------------------------------------------------
 
     cursor.execute(
         """
@@ -28,10 +23,6 @@ def create_tables():
         """
     )
 
-    # --------------------------------------------------
-    # FILES
-    # --------------------------------------------------
-
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS files (
@@ -42,10 +33,6 @@ def create_tables():
         )
         """
     )
-
-    # --------------------------------------------------
-    # COMMAND HISTORY
-    # --------------------------------------------------
 
     cursor.execute(
         """
@@ -64,7 +51,7 @@ def create_tables():
 
 
 # ==================================================
-# FOLDER DATABASE FUNCTIONS
+# FOLDERS
 # ==================================================
 
 
@@ -84,10 +71,7 @@ def add_folder(name, path):
 
     cursor.execute(
         """
-        INSERT OR IGNORE INTO folders (
-            name,
-            path
-        )
+        INSERT OR IGNORE INTO folders (name, path)
         VALUES (?, ?)
         """,
         (
@@ -106,7 +90,6 @@ def find_folder(folder_name):
 
     folder_name = folder_name.lower().strip()
 
-    # Exact match
     cursor.execute(
         """
         SELECT name, path
@@ -123,7 +106,6 @@ def find_folder(folder_name):
         connection.close()
         return result
 
-    # Ignore spaces
     normalized_name = folder_name.replace(" ", "")
 
     cursor.execute(
@@ -144,7 +126,7 @@ def find_folder(folder_name):
 
 
 # ==================================================
-# FILE DATABASE FUNCTIONS
+# FILES
 # ==================================================
 
 
@@ -182,14 +164,15 @@ def add_file(name, extension, path):
     connection.close()
 
 
-def find_file(file_name):
+def find_files(file_name, limit=5):
     """
-    Search for a file by:
+    Return multiple matching files.
 
-    1. Exact filename including extension
+    Search order:
+    1. Exact full filename
     2. Exact filename without extension
-    3. Filename ignoring spaces
-    4. Partial filename match
+    3. Name ignoring spaces
+    4. Partial filename
     """
 
     connection = get_connection()
@@ -198,8 +181,8 @@ def find_file(file_name):
     file_name = file_name.lower().strip()
 
     # --------------------------------------------------
-    # 1. Exact filename
-    # Example: resume.pdf
+    # EXACT FULL NAME
+    # resume.pdf
     # --------------------------------------------------
 
     cursor.execute(
@@ -207,20 +190,23 @@ def find_file(file_name):
         SELECT name, extension, path
         FROM files
         WHERE LOWER(name || extension) = LOWER(?)
-        LIMIT 1
+        LIMIT ?
         """,
-        (file_name,),
+        (
+            file_name,
+            limit,
+        ),
     )
 
-    result = cursor.fetchone()
+    results = cursor.fetchall()
 
-    if result:
+    if results:
         connection.close()
-        return result
+        return results
 
     # --------------------------------------------------
-    # 2. Exact name without extension
-    # Example: resume
+    # EXACT NAME WITHOUT EXTENSION
+    # resume
     # --------------------------------------------------
 
     cursor.execute(
@@ -228,22 +214,22 @@ def find_file(file_name):
         SELECT name, extension, path
         FROM files
         WHERE LOWER(name) = LOWER(?)
-        LIMIT 1
+        LIMIT ?
         """,
-        (file_name,),
+        (
+            file_name,
+            limit,
+        ),
     )
 
-    result = cursor.fetchone()
+    results = cursor.fetchall()
 
-    if result:
+    if results:
         connection.close()
-        return result
+        return results
 
     # --------------------------------------------------
-    # 3. Ignore spaces
-    # Example:
-    # "project report"
-    # can match "projectreport"
+    # IGNORE SPACES
     # --------------------------------------------------
 
     normalized_name = file_name.replace(" ", "")
@@ -253,19 +239,22 @@ def find_file(file_name):
         SELECT name, extension, path
         FROM files
         WHERE REPLACE(LOWER(name), ' ', '') = ?
-        LIMIT 1
+        LIMIT ?
         """,
-        (normalized_name,),
+        (
+            normalized_name,
+            limit,
+        ),
     )
 
-    result = cursor.fetchone()
+    results = cursor.fetchall()
 
-    if result:
+    if results:
         connection.close()
-        return result
+        return results
 
     # --------------------------------------------------
-    # 4. Partial name
+    # PARTIAL MATCH
     # --------------------------------------------------
 
     cursor.execute(
@@ -274,13 +263,34 @@ def find_file(file_name):
         FROM files
         WHERE LOWER(name) LIKE ?
         ORDER BY LENGTH(name) ASC
-        LIMIT 1
+        LIMIT ?
         """,
-        (f"%{file_name}%",),
+        (
+            f"%{file_name}%",
+            limit,
+        ),
     )
 
-    result = cursor.fetchone()
+    results = cursor.fetchall()
 
     connection.close()
 
-    return result
+    return results
+
+
+def find_file(file_name):
+    """
+    Compatibility helper.
+
+    Returns the first matching file.
+    """
+
+    results = find_files(
+        file_name,
+        limit=1,
+    )
+
+    if not results:
+        return None
+
+    return results[0]
