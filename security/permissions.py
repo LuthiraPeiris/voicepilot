@@ -6,7 +6,9 @@ SAFE_ACTIONS = {
     "open_folder",
     "open_website",
     "create_folder",
+    "create_file",
     "open_file",
+    "copy_file",
 }
 
 
@@ -18,6 +20,8 @@ CONFIRM_ACTIONS = {
     "move_file",
     "rename_file",
     "rename_folder",
+    "delete_file",
+    "delete_folder",
 }
 
 
@@ -41,8 +45,13 @@ def get_permission_level(action_name):
     return "UNKNOWN"
 
 
-def request_permission(action_name, confirmation_message=None):
-    level = get_permission_level(action_name)
+def request_permission(
+    action_name,
+    confirmation_message=None,
+):
+    level = get_permission_level(
+        action_name
+    )
 
     if level == "SAFE":
         return True

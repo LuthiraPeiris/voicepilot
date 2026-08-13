@@ -5,6 +5,7 @@ from pathlib import Path
 from context.folder_context import get_current_folder
 from database.database import find_files
 from security.permissions import request_permission
+from send2trash import send2trash
 
 
 SHELL_FOLDER_REGISTRY_PATH = (
@@ -63,7 +64,9 @@ def get_windows_folder(folder_name):
 
 
 def resolve_location(location_name):
-    location_name = location_name.lower().strip()
+    location_name = (
+        location_name.lower().strip()
+    )
 
     path = get_windows_folder(
         location_name
@@ -73,6 +76,11 @@ def resolve_location(location_name):
         return path
 
     return None
+
+
+# ==================================================
+# CREATE FOLDER
+# ==================================================
 
 
 def create_folder(
@@ -98,10 +106,6 @@ def create_folder(
     if not folder_name:
         return "Folder name cannot be empty."
 
-    # --------------------------------------------------
-    # CURRENT FOLDER CONTEXT
-    # --------------------------------------------------
-
     current_folder = get_current_folder()
 
     if current_folder:
@@ -109,10 +113,6 @@ def create_folder(
         location_label = current_folder.name
 
     else:
-        # --------------------------------------------------
-        # EXPLICIT LOCATION OR DEFAULT DESKTOP
-        # --------------------------------------------------
-
         if not location:
             location = "desktop"
 
@@ -158,13 +158,91 @@ def create_folder(
         )
 
 
+# ==================================================
+# CREATE FILE
+# ==================================================
+
+
+def create_file(file_name):
+    """
+    Create an empty file.
+
+    If VoicePilot has a current working folder,
+    the file is created there.
+
+    Otherwise, Desktop is used.
+    """
+
+    if not request_permission(
+        "create_file"
+    ):
+        return "Permission denied."
+
+    file_name = file_name.strip()
+
+    if not file_name:
+        return "File name cannot be empty."
+
+    current_folder = get_current_folder()
+
+    if current_folder:
+        base_path = current_folder
+        location_label = current_folder.name
+
+    else:
+        base_path = resolve_location(
+            "desktop"
+        )
+
+        location_label = "desktop"
+
+    if not base_path:
+        return (
+            "I couldn't find a location "
+            "to create the file."
+        )
+
+    file_path = (
+        base_path / file_name
+    )
+
+    try:
+        if file_path.exists():
+            return (
+                f"A file called {file_name} "
+                f"already exists in "
+                f"{location_label}."
+            )
+
+        file_path.touch()
+
+        return (
+            f"Created file {file_name} "
+            f"in {location_label}."
+        )
+
+    except OSError as error:
+        print(
+            f"Create file error: {error}"
+        )
+
+        return (
+            f"I couldn't create the file "
+            f"{file_name}."
+        )
+
+
+# ==================================================
+# SEARCH FILES INSIDE CURRENT FOLDER
+# ==================================================
+
+
 def find_files_in_current_folder(file_name):
     """
     Search only inside VoicePilot's current
     working folder.
 
-    This intentionally searches direct children
-    of the current folder first.
+    Direct children are searched first.
     """
 
     current_folder = get_current_folder()
@@ -172,7 +250,9 @@ def find_files_in_current_folder(file_name):
     if not current_folder:
         return []
 
-    file_name = file_name.lower().strip()
+    file_name = (
+        file_name.lower().strip()
+    )
 
     if not file_name:
         return []
@@ -188,14 +268,18 @@ def find_files_in_current_folder(file_name):
             stem = item.stem.lower()
             full_name = item.name.lower()
 
-            normalized_stem = stem.replace(
-                " ",
-                "",
+            normalized_stem = (
+                stem.replace(
+                    " ",
+                    "",
+                )
             )
 
-            normalized_search = file_name.replace(
-                " ",
-                "",
+            normalized_search = (
+                file_name.replace(
+                    " ",
+                    "",
+                )
             )
 
             # Exact full filename
@@ -210,7 +294,7 @@ def find_files_in_current_folder(file_name):
 
                 continue
 
-            # Exact name without extension
+            # Exact filename without extension
             if stem == file_name:
                 matches.append(
                     (
@@ -256,6 +340,218 @@ def find_files_in_current_folder(file_name):
     return matches[:5]
 
 
+def find_file_in_current_folder(file_name):
+    """
+    Find one file inside the current folder.
+
+    Returns:
+    - matching file tuple
+    - "MULTIPLE" if several match
+    - None if nothing matches
+    """
+
+    matches = (
+        find_files_in_current_folder(
+            file_name
+        )
+    )
+
+    if not matches:
+        return None
+
+    if len(matches) > 1:
+        return "MULTIPLE"
+
+    return matches[0]
+
+
+# ==================================================
+# SEARCH FOLDER INSIDE CURRENT FOLDER
+# ==================================================
+
+
+def find_folder_in_current_folder(
+    folder_name,
+):
+    """
+    Find a direct child folder inside the
+    current working folder.
+    """
+
+    current_folder = get_current_folder()
+
+    if not current_folder:
+        return None
+
+    folder_name = (
+        folder_name.lower().strip()
+    )
+
+    try:
+        for item in current_folder.iterdir():
+
+            if (
+                item.is_dir()
+                and item.name.lower()
+                == folder_name
+            ):
+                return item
+
+    except (
+        PermissionError,
+        OSError,
+    ):
+        return None
+
+    return None
+
+
+# ==================================================
+# DELETE FILE
+# ==================================================
+
+
+def delete_file(file_name):
+    """
+    Move a file from the current working folder
+    to the Windows Recycle Bin.
+    """
+
+    current_folder = get_current_folder()
+
+    if not current_folder:
+        return (
+            "Open a folder first so I know "
+            "which file you want to delete."
+        )
+
+    match = find_file_in_current_folder(
+        file_name
+    )
+
+    if not match:
+        return (
+            f"I couldn't find a file called "
+            f"{file_name} in "
+            f"{current_folder.name}."
+        )
+
+    if match == "MULTIPLE":
+        return (
+            f"I found multiple files matching "
+            f"{file_name} in "
+            f"{current_folder.name}. "
+            "Please be more specific."
+        )
+
+    name, extension, path = match
+
+    file_path = Path(path)
+
+    allowed = request_permission(
+        "delete_file",
+        (
+            f"Do you want me to move "
+            f"{name}{extension} "
+            "to the Recycle Bin?"
+        ),
+    )
+
+    if not allowed:
+        return "Delete cancelled."
+
+    try:
+        send2trash(
+            str(file_path)
+        )
+
+        return (
+            f"Moved {name}{extension} "
+            "to the Recycle Bin."
+        )
+
+    except Exception as error:
+        print(
+            f"Delete file error: {error}"
+        )
+
+        return (
+            f"I couldn't delete "
+            f"{name}{extension}."
+        )
+
+
+# ==================================================
+# DELETE FOLDER
+# ==================================================
+
+
+def delete_folder(folder_name):
+    """
+    Move a folder from the current working folder
+    to the Windows Recycle Bin.
+    """
+
+    current_folder = get_current_folder()
+
+    if not current_folder:
+        return (
+            "Open a folder first so I know "
+            "which folder you want to delete."
+        )
+
+    folder_path = (
+        find_folder_in_current_folder(
+            folder_name
+        )
+    )
+
+    if not folder_path:
+        return (
+            f"I couldn't find a folder "
+            f"called {folder_name} in "
+            f"{current_folder.name}."
+        )
+
+    allowed = request_permission(
+        "delete_folder",
+        (
+            f"Do you want me to move the "
+            f"{folder_path.name} folder "
+            "to the Recycle Bin?"
+        ),
+    )
+
+    if not allowed:
+        return "Delete cancelled."
+
+    try:
+        send2trash(
+            str(folder_path)
+        )
+
+        return (
+            f"Moved the "
+            f"{folder_path.name} folder "
+            "to the Recycle Bin."
+        )
+
+    except Exception as error:
+        print(
+            f"Delete folder error: {error}"
+        )
+
+        return (
+            f"I couldn't delete the "
+            f"{folder_path.name} folder."
+        )
+
+
+# ==================================================
+# OPEN FILE
+# ==================================================
+
+
 def _open_indexed_file(match):
     """
     Open one indexed file.
@@ -276,7 +572,9 @@ def _open_indexed_file(match):
         }
 
     try:
-        os.startfile(file_path)
+        os.startfile(
+            file_path
+        )
 
         return {
             "response": (
@@ -338,7 +636,9 @@ def open_file(file_name):
 
     if not file_name:
         return {
-            "response": "File name cannot be empty.",
+            "response": (
+                "File name cannot be empty."
+            ),
             "success": False,
             "needs_selection": False,
         }
@@ -366,7 +666,6 @@ def open_file(file_name):
             limit=5,
         )
 
-        # Remove stale index entries
         matches = [
             match
             for match in matches
@@ -376,7 +675,9 @@ def open_file(file_name):
     if not matches:
         _pending_file_matches = []
 
-        current_folder = get_current_folder()
+        current_folder = (
+            get_current_folder()
+        )
 
         if current_folder:
             return {
@@ -410,7 +711,9 @@ def open_file(file_name):
             matches[0]
         )
 
-        result["needs_selection"] = False
+        result[
+            "needs_selection"
+        ] = False
 
         return result
 
@@ -453,6 +756,11 @@ def open_file(file_name):
     }
 
 
+# ==================================================
+# FILE SELECTION STATE
+# ==================================================
+
+
 def has_pending_file_selection():
     """
     Check whether VoicePilot is waiting for the
@@ -472,7 +780,7 @@ def clear_pending_file_selection():
 
 def select_pending_file(selection):
     """
-    Resolve a follow-up answer such as:
+    Resolve follow-up answers such as:
 
     first
     second
@@ -504,7 +812,9 @@ def select_pending_file(selection):
         _pending_file_matches = []
 
         return {
-            "response": "File selection cancelled.",
+            "response": (
+                "File selection cancelled."
+            ),
             "success": False,
         }
 
