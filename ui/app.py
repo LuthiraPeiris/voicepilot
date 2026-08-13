@@ -2,7 +2,18 @@ import threading
 
 import customtkinter as ctk
 
+from main import execute_command
+
+from database.database import create_tables
+from database.watcher import (
+    start_index_watcher,
+    stop_index_watcher,
+)
+
 from speech.recorder import record_audio
+from speech.speech_to_text import (
+    transcribe_audio,
+)
 
 
 # --------------------------------------------------
@@ -10,7 +21,10 @@ from speech.recorder import record_audio
 # --------------------------------------------------
 
 ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("blue")
+
+ctk.set_default_color_theme(
+    "blue"
+)
 
 
 class VoicePilotApp(ctk.CTk):
@@ -21,8 +35,20 @@ class VoicePilotApp(ctk.CTk):
         # WINDOW
         # ------------------------------------------
 
-        self.title("VoicePilot")
-        self.geometry("500x650")
+        self.title(
+            "VoicePilot"
+        )
+
+        # Always keep VoicePilot above
+        # normal desktop windows.
+        self.attributes(
+            "-topmost",
+            True,
+        )
+
+        self.geometry(
+            "500x650"
+        )
 
         self.minsize(
             450,
@@ -31,9 +57,27 @@ class VoicePilotApp(ctk.CTk):
 
         self.center_window()
 
-        # Prevent multiple recordings
-        # from starting at the same time.
         self.is_listening = False
+
+        # ------------------------------------------
+        # DATABASE
+        # ------------------------------------------
+
+        create_tables()
+
+        # ------------------------------------------
+        # FILE INDEX WATCHER
+        # ------------------------------------------
+
+        self.index_observer = (
+            start_index_watcher()
+        )
+
+        # Handle window close safely.
+        self.protocol(
+            "WM_DELETE_WINDOW",
+            self.close_application,
+        )
 
         # ------------------------------------------
         # MAIN CONTAINER
@@ -55,18 +99,20 @@ class VoicePilotApp(ctk.CTk):
         # TITLE
         # ------------------------------------------
 
-        self.title_label = ctk.CTkLabel(
-            self.main_frame,
-            text="VoicePilot",
-            font=ctk.CTkFont(
-                size=30,
-                weight="bold",
-            ),
+        self.title_label = (
+            ctk.CTkLabel(
+                self.main_frame,
+                text="VoicePilot",
+                font=ctk.CTkFont(
+                    size=30,
+                    weight="bold",
+                ),
+            )
         )
 
         self.title_label.pack(
             pady=(
-                35,
+                30,
                 5,
             )
         )
@@ -75,19 +121,24 @@ class VoicePilotApp(ctk.CTk):
         # SUBTITLE
         # ------------------------------------------
 
-        self.subtitle_label = ctk.CTkLabel(
-            self.main_frame,
-            text="Your desktop voice assistant",
-            font=ctk.CTkFont(
-                size=14,
-            ),
-            text_color="gray70",
+        self.subtitle_label = (
+            ctk.CTkLabel(
+                self.main_frame,
+                text=(
+                    "Your desktop "
+                    "voice assistant"
+                ),
+                font=ctk.CTkFont(
+                    size=14,
+                ),
+                text_color="gray70",
+            )
         )
 
         self.subtitle_label.pack(
             pady=(
                 0,
-                40,
+                25,
             )
         )
 
@@ -95,76 +146,218 @@ class VoicePilotApp(ctk.CTk):
         # MICROPHONE AREA
         # ------------------------------------------
 
-        self.mic_frame = ctk.CTkFrame(
-            self.main_frame,
-            fg_color="transparent",
+        self.mic_frame = (
+            ctk.CTkFrame(
+                self.main_frame,
+                fg_color="transparent",
+            )
         )
 
         self.mic_frame.pack(
-            fill="both",
-            expand=True,
-        )
-
-        self.mic_button = ctk.CTkButton(
-            self.mic_frame,
-            text="🎤",
-            width=130,
-            height=130,
-            corner_radius=65,
-            font=ctk.CTkFont(
-                size=48,
-            ),
-            command=self.handle_mic_click,
-        )
-
-        self.mic_button.place(
-            relx=0.5,
-            rely=0.42,
-            anchor="center",
-        )
-
-        # ------------------------------------------
-        # BUTTON LABEL
-        # ------------------------------------------
-
-        self.listen_label = ctk.CTkLabel(
-            self.mic_frame,
-            text="Start Listening",
-            font=ctk.CTkFont(
-                size=18,
-                weight="bold",
+            fill="x",
+            pady=(
+                5,
+                15,
             ),
         )
 
-        self.listen_label.place(
-            relx=0.5,
-            rely=0.62,
-            anchor="center",
+        self.mic_button = (
+            ctk.CTkButton(
+                self.mic_frame,
+                text="🎤",
+                width=130,
+                height=130,
+                corner_radius=65,
+                font=ctk.CTkFont(
+                    size=48,
+                ),
+                command=(
+                    self.handle_mic_click
+                ),
+            )
+        )
+
+        self.mic_button.pack(
+            pady=10,
+        )
+
+        # ------------------------------------------
+        # LISTEN LABEL
+        # ------------------------------------------
+
+        self.listen_label = (
+            ctk.CTkLabel(
+                self.mic_frame,
+                text="Start Listening",
+                font=ctk.CTkFont(
+                    size=18,
+                    weight="bold",
+                ),
+            )
+        )
+
+        self.listen_label.pack(
+            pady=(
+                5,
+                10,
+            )
+        )
+
+        # ------------------------------------------
+        # COMMAND DISPLAY
+        # ------------------------------------------
+
+        self.command_frame = (
+            ctk.CTkFrame(
+                self.main_frame,
+                corner_radius=12,
+            )
+        )
+
+        self.command_frame.pack(
+            fill="x",
+            padx=25,
+            pady=(
+                5,
+                10,
+            ),
+        )
+
+        self.command_title = (
+            ctk.CTkLabel(
+                self.command_frame,
+                text=(
+                    "Recognized Command"
+                ),
+                font=ctk.CTkFont(
+                    size=13,
+                    weight="bold",
+                ),
+                text_color="gray70",
+            )
+        )
+
+        self.command_title.pack(
+            anchor="w",
+            padx=15,
+            pady=(
+                12,
+                5,
+            ),
+        )
+
+        self.command_label = (
+            ctk.CTkLabel(
+                self.command_frame,
+                text="No command yet",
+                font=ctk.CTkFont(
+                    size=16,
+                ),
+                wraplength=380,
+                justify="left",
+            )
+        )
+
+        self.command_label.pack(
+            anchor="w",
+            padx=15,
+            pady=(
+                0,
+                15,
+            ),
+        )
+
+        # ------------------------------------------
+        # RESPONSE DISPLAY
+        # ------------------------------------------
+
+        self.response_frame = (
+            ctk.CTkFrame(
+                self.main_frame,
+                corner_radius=12,
+            )
+        )
+
+        self.response_frame.pack(
+            fill="x",
+            padx=25,
+            pady=(
+                0,
+                10,
+            ),
+        )
+
+        self.response_title = (
+            ctk.CTkLabel(
+                self.response_frame,
+                text="VoicePilot",
+                font=ctk.CTkFont(
+                    size=13,
+                    weight="bold",
+                ),
+                text_color="gray70",
+            )
+        )
+
+        self.response_title.pack(
+            anchor="w",
+            padx=15,
+            pady=(
+                12,
+                5,
+            ),
+        )
+
+        self.response_label = (
+            ctk.CTkLabel(
+                self.response_frame,
+                text="Ready for a command.",
+                font=ctk.CTkFont(
+                    size=15,
+                ),
+                wraplength=380,
+                justify="left",
+            )
+        )
+
+        self.response_label.pack(
+            anchor="w",
+            padx=15,
+            pady=(
+                0,
+                15,
+            ),
         )
 
         # ------------------------------------------
         # STATUS
         # ------------------------------------------
 
-        self.status_label = ctk.CTkLabel(
-            self.main_frame,
-            text="● Ready",
-            font=ctk.CTkFont(
-                size=14,
-            ),
+        self.status_label = (
+            ctk.CTkLabel(
+                self.main_frame,
+                text="● Ready",
+                font=ctk.CTkFont(
+                    size=14,
+                ),
+            )
         )
 
         self.status_label.pack(
             pady=(
-                10,
-                25,
+                5,
+                20,
             )
         )
 
+    # --------------------------------------------------
+    # MICROPHONE
+    # --------------------------------------------------
+
     def handle_mic_click(self):
         """
-        Start recording when the user
-        clicks the microphone button.
+        Start VoicePilot listening when
+        the microphone button is clicked.
         """
 
         if self.is_listening:
@@ -184,77 +377,258 @@ class VoicePilotApp(ctk.CTk):
             state="disabled"
         )
 
-        # Run recording outside the UI thread
-        # so the application window does not freeze.
-        recording_thread = threading.Thread(
-            target=self.listen_for_audio,
-            daemon=True,
+        self.command_label.configure(
+            text=(
+                "Listening for "
+                "your command..."
+            )
         )
 
-        recording_thread.start()
+        self.response_label.configure(
+            text="..."
+        )
 
-    def listen_for_audio(self):
+        worker_thread = (
+            threading.Thread(
+                target=(
+                    self.listen_and_process
+                ),
+                daemon=True,
+            )
+        )
+
+        worker_thread.start()
+
+    # --------------------------------------------------
+    # LISTEN + TRANSCRIBE + EXECUTE
+    # --------------------------------------------------
+
+    def listen_and_process(self):
         """
-        Record audio using the existing
-        VoicePilot recorder.
+        Complete VoicePilot command flow:
+
+        microphone
+        -> transcription
+        -> normalization
+        -> parser
+        -> action
+        -> response
         """
 
         audio_path = record_audio()
 
-        # UI updates should be scheduled
-        # back onto the Tkinter main thread.
+        if not audio_path:
+            self.after(
+                0,
+                self.handle_no_audio,
+            )
+
+            return
+
         self.after(
             0,
-            self.recording_finished,
-            audio_path,
+            self.show_processing_status,
         )
 
-    def recording_finished(
-        self,
-        audio_path,
-    ):
-        """
-        Handle the result after
-        recording finishes.
-        """
+        command_text = (
+            transcribe_audio(
+                audio_path
+            )
+        )
 
+        if not command_text:
+            self.after(
+                0,
+                self.handle_bad_transcription,
+            )
+
+            return
+
+        print(
+            "Recognized command: "
+            f"{command_text}"
+        )
+
+        self.after(
+            0,
+            self.show_recognized_command,
+            command_text,
+        )
+
+        # ------------------------------------------
+        # EXECUTE EXISTING VOICEPILOT COMMAND
+        # ------------------------------------------
+
+        result = execute_command(
+            command_text,
+            speak_result=True,
+        )
+
+        self.after(
+            0,
+            self.command_finished,
+            result,
+        )
+
+    # --------------------------------------------------
+    # PROCESSING STATUS
+    # --------------------------------------------------
+
+    def show_processing_status(self):
+        self.status_label.configure(
+            text="● Processing..."
+        )
+
+        self.listen_label.configure(
+            text="Processing..."
+        )
+
+    # --------------------------------------------------
+    # SHOW TRANSCRIPTION
+    # --------------------------------------------------
+
+    def show_recognized_command(
+        self,
+        command_text,
+    ):
+        self.command_label.configure(
+            text=command_text
+        )
+
+        self.status_label.configure(
+            text="● Executing..."
+        )
+
+        self.listen_label.configure(
+            text="Executing..."
+        )
+
+    # --------------------------------------------------
+    # COMMAND COMPLETE
+    # --------------------------------------------------
+
+    def command_finished(
+        self,
+        result,
+    ):
         self.is_listening = False
 
         self.mic_button.configure(
             state="normal"
         )
 
-        if audio_path:
-            print(
-                f"Audio recorded: "
-                f"{audio_path}"
+        # Prefer the natural spoken response.
+        response = result.get(
+            "spoken_response"
+        )
+
+        if not response:
+            response = result.get(
+                "response"
             )
 
-            self.status_label.configure(
-                text="● Ready"
+        if response == "EXIT":
+            response = "Goodbye."
+
+        if not response:
+            response = (
+                "Command completed."
             )
 
-            self.listen_label.configure(
-                text="Start Listening"
+        self.response_label.configure(
+            text=response
+        )
+
+        self.status_label.configure(
+            text="● Ready"
+        )
+
+        self.listen_label.configure(
+            text="Start Listening"
+        )
+
+        # ------------------------------------------
+        # EXIT VOICEPILOT
+        # ------------------------------------------
+
+        if result.get("exit"):
+            self.after(
+                500,
+                self.close_application,
             )
 
-        else:
-            print(
-                "No speech was recorded."
-            )
+    # --------------------------------------------------
+    # NO AUDIO
+    # --------------------------------------------------
 
-            self.status_label.configure(
-                text="● No speech detected"
-            )
+    def handle_no_audio(self):
+        self.is_listening = False
 
-            self.listen_label.configure(
-                text="Try Again"
+        self.mic_button.configure(
+            state="normal"
+        )
+
+        self.command_label.configure(
+            text="No speech detected."
+        )
+
+        self.response_label.configure(
+            text=(
+                "I couldn't hear "
+                "anything."
             )
+        )
+
+        self.status_label.configure(
+            text="● No speech detected"
+        )
+
+        self.listen_label.configure(
+            text="Try Again"
+        )
+
+    # --------------------------------------------------
+    # TRANSCRIPTION FAILURE
+    # --------------------------------------------------
+
+    def handle_bad_transcription(
+        self,
+    ):
+        self.is_listening = False
+
+        self.mic_button.configure(
+            state="normal"
+        )
+
+        self.command_label.configure(
+            text=(
+                "I couldn't understand "
+                "what you said."
+            )
+        )
+
+        self.response_label.configure(
+            text=(
+                "Please try the "
+                "command again."
+            )
+        )
+
+        self.status_label.configure(
+            text="● Try again"
+        )
+
+        self.listen_label.configure(
+            text="Try Again"
+        )
+
+    # --------------------------------------------------
+    # WINDOW POSITION
+    # --------------------------------------------------
 
     def center_window(self):
         """
-        Center the VoicePilot window
-        on the screen.
+        Center VoicePilot on screen.
         """
 
         self.update_idletasks()
@@ -282,6 +656,29 @@ class VoicePilotApp(ctk.CTk):
             f"{width}x{height}"
             f"+{x}+{y}"
         )
+
+    # --------------------------------------------------
+    # CLOSE APPLICATION
+    # --------------------------------------------------
+
+    def close_application(self):
+        """
+        Stop background services and
+        close VoicePilot cleanly.
+        """
+
+        print(
+            "Closing VoicePilot..."
+        )
+
+        if self.index_observer:
+            stop_index_watcher(
+                self.index_observer
+            )
+
+            self.index_observer = None
+
+        self.destroy()
 
 
 def run_ui():
