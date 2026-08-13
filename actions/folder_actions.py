@@ -5,6 +5,10 @@ from pathlib import Path
 
 from security.permissions import request_permission
 from database.database import find_folder
+from context.folder_context import (
+    set_current_folder,
+    get_current_folder,
+)
 
 
 SHELL_FOLDER_REGISTRY_PATH = (
@@ -63,6 +67,9 @@ def open_common_folder(folder_name):
     """
     Open common Windows user folders such as
     Desktop, Downloads, Documents, Pictures, Music, and Videos.
+
+    When successfully opened, the folder becomes
+    VoicePilot's current working folder.
     """
 
     folder_name = folder_name.lower().strip()
@@ -77,6 +84,9 @@ def open_common_folder(folder_name):
 
     try:
         os.startfile(path)
+
+        # Remember this folder as the current context
+        set_current_folder(path)
 
         return f"Opening {folder_name}."
 
@@ -108,31 +118,90 @@ def search_folder(folder_name):
     return None
 
 
+def search_folder_in_current_folder(folder_name):
+    """
+    Search for a child folder inside the current
+    VoicePilot working folder.
+
+    Example:
+
+    Current folder:
+    Downloads
+
+    Command:
+    open folder projects
+
+    VoicePilot first checks:
+    Downloads/projects
+    """
+
+    current_folder = get_current_folder()
+
+    if not current_folder:
+        return None
+
+    folder_name = folder_name.strip()
+
+    try:
+        # Exact child folder path first
+        candidate = current_folder / folder_name
+
+        if candidate.exists() and candidate.is_dir():
+            return candidate
+
+        # Case-insensitive child folder search
+        for item in current_folder.iterdir():
+            if (
+                item.is_dir()
+                and item.name.lower() == folder_name.lower()
+            ):
+                return item
+
+    except (PermissionError, OSError):
+        return None
+
+    return None
+
+
 def find_folder_path(folder_name):
     """
     Resolve a folder name to its actual filesystem path.
 
-    First checks Windows-known folders.
-    Then searches the SQLite folder index.
+    Search order:
+    1. Current working folder
+    2. Windows-known folders
+    3. Global SQLite folder index
     """
 
     folder_name = folder_name.lower().strip()
 
+    # Check inside current working folder first
+    current_match = search_folder_in_current_folder(
+        folder_name
+    )
+
+    if current_match:
+        return current_match
+
+    # Check common Windows folders
     common_path = get_windows_folder(folder_name)
 
     if common_path:
         return common_path
 
+    # Fall back to global folder index
     return search_folder(folder_name)
 
 
 def open_folder(folder_name):
     """
-    Open a folder.
+    Open a folder and make it VoicePilot's
+    current working folder.
 
-    First checks common Windows folders.
-    If it is not a common folder, searches
-    the SQLite folder index.
+    Search order:
+    1. Windows-known folder
+    2. Folder inside current working folder
+    3. Global SQLite folder index
     """
 
     if not request_permission("open_folder"):
@@ -140,18 +209,50 @@ def open_folder(folder_name):
 
     folder_name = folder_name.lower().strip()
 
-    # Check Windows-known folders first
+    # --------------------------------------------------
+    # COMMON WINDOWS FOLDERS
+    # --------------------------------------------------
+
     common_result = open_common_folder(folder_name)
 
     if common_result:
         return common_result
 
-    # Search SQLite folder index
+    # --------------------------------------------------
+    # CURRENT FOLDER
+    # --------------------------------------------------
+
+    current_match = search_folder_in_current_folder(
+        folder_name
+    )
+
+    if current_match:
+        try:
+            os.startfile(current_match)
+
+            set_current_folder(current_match)
+
+            return f"Opening {current_match.name}."
+
+        except OSError as error:
+            print(f"Open folder error: {error}")
+
+            return (
+                f"I found {current_match}, "
+                "but I couldn't open it."
+            )
+
+    # --------------------------------------------------
+    # GLOBAL FOLDER INDEX
+    # --------------------------------------------------
+
     match = search_folder(folder_name)
 
     if match:
         try:
             os.startfile(match)
+
+            set_current_folder(match)
 
             return f"Opening {match.name}."
 
@@ -243,7 +344,10 @@ else {
         if "CLOSED" in output:
             return f"Closing folder {folder_name}."
 
-        return f"The {folder_name} folder is not currently open."
+        return (
+            f"The {folder_name} folder "
+            "is not currently open."
+        )
 
     except Exception as error:
         print(f"Folder closing error: {error}")

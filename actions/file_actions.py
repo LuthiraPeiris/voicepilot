@@ -2,6 +2,7 @@ import os
 import winreg
 from pathlib import Path
 
+from context.folder_context import get_current_folder
 from database.database import find_files
 from security.permissions import request_permission
 
@@ -76,8 +77,17 @@ def resolve_location(location_name):
 
 def create_folder(
     folder_name,
-    location="desktop",
+    location=None,
 ):
+    """
+    Create a folder.
+
+    If VoicePilot has a current working folder,
+    the new folder is created there.
+
+    Otherwise, Desktop is used by default.
+    """
+
     if not request_permission(
         "create_folder"
     ):
@@ -88,14 +98,34 @@ def create_folder(
     if not folder_name:
         return "Folder name cannot be empty."
 
-    base_path = resolve_location(
-        location
-    )
+    # --------------------------------------------------
+    # CURRENT FOLDER CONTEXT
+    # --------------------------------------------------
+
+    current_folder = get_current_folder()
+
+    if current_folder:
+        base_path = current_folder
+        location_label = current_folder.name
+
+    else:
+        # --------------------------------------------------
+        # EXPLICIT LOCATION OR DEFAULT DESKTOP
+        # --------------------------------------------------
+
+        if not location:
+            location = "desktop"
+
+        base_path = resolve_location(
+            location
+        )
+
+        location_label = location
 
     if not base_path:
         return (
             f"I couldn't find your "
-            f"{location} folder."
+            f"{location_label} folder."
         )
 
     folder_path = (
@@ -106,14 +136,15 @@ def create_folder(
         if folder_path.exists():
             return (
                 f"A folder called {folder_name} "
-                f"already exists in {location}."
+                f"already exists in "
+                f"{location_label}."
             )
 
         folder_path.mkdir()
 
         return (
             f"Created folder {folder_name} "
-            f"in {location}."
+            f"in {location_label}."
         )
 
     except OSError as error:
@@ -125,6 +156,104 @@ def create_folder(
             f"I couldn't create the folder "
             f"{folder_name}."
         )
+
+
+def find_files_in_current_folder(file_name):
+    """
+    Search only inside VoicePilot's current
+    working folder.
+
+    This intentionally searches direct children
+    of the current folder first.
+    """
+
+    current_folder = get_current_folder()
+
+    if not current_folder:
+        return []
+
+    file_name = file_name.lower().strip()
+
+    if not file_name:
+        return []
+
+    matches = []
+
+    try:
+        for item in current_folder.iterdir():
+
+            if not item.is_file():
+                continue
+
+            stem = item.stem.lower()
+            full_name = item.name.lower()
+
+            normalized_stem = stem.replace(
+                " ",
+                "",
+            )
+
+            normalized_search = file_name.replace(
+                " ",
+                "",
+            )
+
+            # Exact full filename
+            if full_name == file_name:
+                matches.append(
+                    (
+                        item.stem,
+                        item.suffix,
+                        str(item),
+                    )
+                )
+
+                continue
+
+            # Exact name without extension
+            if stem == file_name:
+                matches.append(
+                    (
+                        item.stem,
+                        item.suffix,
+                        str(item),
+                    )
+                )
+
+                continue
+
+            # Ignore spaces
+            if (
+                normalized_stem
+                == normalized_search
+            ):
+                matches.append(
+                    (
+                        item.stem,
+                        item.suffix,
+                        str(item),
+                    )
+                )
+
+                continue
+
+            # Partial match
+            if file_name in stem:
+                matches.append(
+                    (
+                        item.stem,
+                        item.suffix,
+                        str(item),
+                    )
+                )
+
+    except (
+        PermissionError,
+        OSError,
+    ):
+        return []
+
+    return matches[:5]
 
 
 def _open_indexed_file(match):
@@ -186,6 +315,10 @@ def open_file(file_name):
     """
     Find and open a file.
 
+    Search order:
+    1. Current working folder
+    2. Global VoicePilot file index
+
     If several files match, remember them and
     ask the user to choose one.
     """
@@ -210,20 +343,52 @@ def open_file(file_name):
             "needs_selection": False,
         }
 
-    matches = find_files(
-        file_name,
-        limit=5,
+    # --------------------------------------------------
+    # CURRENT FOLDER FIRST
+    # --------------------------------------------------
+
+    current_matches = (
+        find_files_in_current_folder(
+            file_name
+        )
     )
 
-    # Remove stale index entries
-    matches = [
-        match
-        for match in matches
-        if Path(match[2]).exists()
-    ]
+    if current_matches:
+        matches = current_matches
+
+    else:
+        # --------------------------------------------------
+        # GLOBAL FILE INDEX FALLBACK
+        # --------------------------------------------------
+
+        matches = find_files(
+            file_name,
+            limit=5,
+        )
+
+        # Remove stale index entries
+        matches = [
+            match
+            for match in matches
+            if Path(match[2]).exists()
+        ]
 
     if not matches:
         _pending_file_matches = []
+
+        current_folder = get_current_folder()
+
+        if current_folder:
+            return {
+                "response": (
+                    f"I couldn't find a file "
+                    f"called {file_name} in "
+                    f"{current_folder.name} "
+                    "or in the file index."
+                ),
+                "success": False,
+                "needs_selection": False,
+            }
 
         return {
             "response": (
@@ -234,7 +399,10 @@ def open_file(file_name):
             "needs_selection": False,
         }
 
-    # Only one result
+    # --------------------------------------------------
+    # ONE RESULT
+    # --------------------------------------------------
+
     if len(matches) == 1:
         _pending_file_matches = []
 
@@ -246,7 +414,10 @@ def open_file(file_name):
 
         return result
 
-    # Several results
+    # --------------------------------------------------
+    # MULTIPLE RESULTS
+    # --------------------------------------------------
+
     _pending_file_matches = matches
 
     descriptions = []
@@ -257,7 +428,9 @@ def open_file(file_name):
     ):
         name, extension, path = match
 
-        location = _location_label(match)
+        location = _location_label(
+            match
+        )
 
         descriptions.append(
             f"number {index}, "
@@ -265,7 +438,9 @@ def open_file(file_name):
             f"in {location}"
         )
 
-    choices = ". ".join(descriptions)
+    choices = ". ".join(
+        descriptions
+    )
 
     return {
         "response": (
@@ -391,7 +566,6 @@ def select_pending_file(selection):
 
     # --------------------------------------------------
     # SELECT BY FOLDER / PATH
-    # Example: "downloads"
     # --------------------------------------------------
 
     path_matches = []
@@ -400,7 +574,9 @@ def select_pending_file(selection):
         path = match[2].lower()
 
         if selection in path:
-            path_matches.append(match)
+            path_matches.append(
+                match
+            )
 
     if len(path_matches) == 1:
         match = path_matches[0]
