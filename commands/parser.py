@@ -1,5 +1,11 @@
 from actions.folder_actions import open_folder, close_folder
 from actions.app_actions import open_application, close_application
+from actions.file_actions import (
+    create_folder,
+    open_file,
+    has_pending_file_selection,
+    select_pending_file,
+)
 from actions.system_actions import (
     volume_up,
     volume_down,
@@ -58,6 +64,9 @@ def action_succeeded(response):
         "cancelled",
         "permission denied",
         "not currently open",
+        "already exists",
+        "cannot be empty",
+        "don't recognize",
     ]
 
     for phrase in failure_phrases:
@@ -82,25 +91,29 @@ def process_command(command):
         )
 
     # --------------------------------------------------
-    # REFRESH FOLDER INDEX
+    # REFRESH FILE / FOLDER INDEX
     # --------------------------------------------------
 
-    elif command == "refresh folders":
+    elif command in [
+        "refresh folders",
+        "refresh files",
+        "refresh index",
+    ]:
         try:
             build_folder_index()
 
             return create_result(
-                response="Folder index refreshed.",
-                intent="REFRESH_FOLDERS",
+                response="File and folder index refreshed.",
+                intent="REFRESH_INDEX",
                 success=True,
             )
 
         except Exception as error:
-            print(f"Folder indexing error: {error}")
+            print(f"Indexing error: {error}")
 
             return create_result(
-                response="I couldn't refresh the folder index.",
-                intent="REFRESH_FOLDERS",
+                response="I couldn't refresh the file and folder index.",
+                intent="REFRESH_INDEX",
                 success=False,
             )
 
@@ -183,10 +196,6 @@ def process_command(command):
 
     # --------------------------------------------------
     # UNMUTE AUDIO
-    #
-    # For now, mute_volume() uses the Windows mute
-    # toggle key, so this performs the same system
-    # action as "mute".
     # --------------------------------------------------
 
     elif command in [
@@ -204,10 +213,103 @@ def process_command(command):
         )
 
     # --------------------------------------------------
+    # LOCK COMPUTER
+    # --------------------------------------------------
+
+    elif command in [
+        "lock computer",
+        "lock pc",
+        "lock my computer",
+    ]:
+        response = lock_computer()
+
+        return create_result(
+            response=response,
+            intent="LOCK_COMPUTER",
+            success=response == "LOCKED",
+        )
+
+    # --------------------------------------------------
+    # RESTART COMPUTER
+    # --------------------------------------------------
+
+    elif command in [
+        "restart computer",
+        "restart pc",
+        "restart my computer",
+    ]:
+        response = restart_computer()
+
+        return create_result(
+            response=response,
+            intent="RESTART_COMPUTER",
+            success=response == "RESTARTING",
+        )
+
+    # --------------------------------------------------
+    # SHUTDOWN COMPUTER
+    # --------------------------------------------------
+
+    elif command in [
+        "shutdown computer",
+        "shut down computer",
+        "shutdown pc",
+        "shut down pc",
+        "turn off computer",
+    ]:
+        response = shutdown_computer()
+
+        return create_result(
+            response=response,
+            intent="SHUTDOWN_COMPUTER",
+            success=response == "SHUTTING_DOWN",
+        )
+
+    # --------------------------------------------------
+    # CREATE FOLDER
+    # --------------------------------------------------
+
+    elif command.startswith("create folder "):
+        folder_name = command.replace(
+            "create folder ",
+            "",
+            1
+        ).strip()
+
+        response = create_folder(folder_name)
+
+        return create_result(
+            response=response,
+            intent="CREATE_FOLDER",
+            success=action_succeeded(response),
+        )
+
+    # --------------------------------------------------
+    # OPEN FILE
+    #
+    # Explicit file commands must be checked BEFORE
+    # pending file-selection responses.
+    # --------------------------------------------------
+
+    elif command.startswith("open file "):
+        file_name = command.replace(
+            "open file ",
+            "",
+            1
+        ).strip()
+
+        result = open_file(file_name)
+
+        return create_result(
+            response=result["response"],
+            intent="OPEN_FILE",
+            success=result["success"],
+        )
+
+    # --------------------------------------------------
     # CLOSE FOLDER
     #
-    # This must come before the generic "close "
-    # application command.
+    # Must come before generic "close ".
     # --------------------------------------------------
 
     elif command.startswith("close folder "):
@@ -246,6 +348,8 @@ def process_command(command):
 
     # --------------------------------------------------
     # OPEN FOLDER
+    #
+    # Must come before generic "open ".
     # --------------------------------------------------
 
     elif command.startswith("open folder "):
@@ -300,57 +404,29 @@ def process_command(command):
             success=action_succeeded(response),
         )
 
-        # --------------------------------------------------
-    # LOCK COMPUTER
+    # --------------------------------------------------
+    # PENDING FILE SELECTION
+    #
+    # This is intentionally near the bottom.
+    #
+    # Examples:
+    # "first"
+    # "second"
+    # "the third one"
+    # "downloads"
+    # "documents"
+    #
+    # Normal VoicePilot commands above always get
+    # priority over an old pending selection.
     # --------------------------------------------------
 
-    elif command in [
-        "lock computer",
-        "lock pc",
-        "lock my computer",
-    ]:
-        response = lock_computer()
+    elif has_pending_file_selection():
+        result = select_pending_file(command)
 
         return create_result(
-            response=response,
-            intent="LOCK_COMPUTER",
-            success=response == "LOCKED",
-        )
-
-    # --------------------------------------------------
-    # RESTART COMPUTER
-    # --------------------------------------------------
-
-    elif command in [
-        "restart computer",
-        "restart pc",
-        "restart my computer",
-    ]:
-        response = restart_computer()
-
-        return create_result(
-            response=response,
-            intent="RESTART_COMPUTER",
-            success=response == "RESTARTING",
-        )
-
-    # --------------------------------------------------
-    # SHUTDOWN COMPUTER
-    # --------------------------------------------------
-
-    elif command in [
-        "shutdown computer",
-        "shut down computer",
-        "shutdown pc",
-        "shut down pc",
-        "turn off computer",
-    ]:
-        response = shutdown_computer()
-
-        return create_result(
-            response=response,
-            intent="SHUTDOWN_COMPUTER",
-            success=response == "SHUTTING_DOWN",
+            response=result["response"],
+            intent="OPEN_FILE_SELECTION",
+            success=result["success"],
         )
 
     # --------------------------------------------------

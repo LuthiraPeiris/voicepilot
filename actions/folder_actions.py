@@ -1,37 +1,62 @@
 import os
 import subprocess
+import winreg
 from pathlib import Path
 
 from security.permissions import request_permission
 from database.database import find_folder
 
 
-COMMON_FOLDERS = {
-    "desktop": Path.home() / "Desktop",
-    "downloads": Path.home() / "Downloads",
-    "documents": Path.home() / "Documents",
-    "pictures": Path.home() / "Pictures",
-    "music": Path.home() / "Music",
-    "videos": Path.home() / "Videos",
+SHELL_FOLDER_REGISTRY_PATH = (
+    r"Software\Microsoft\Windows\CurrentVersion"
+    r"\Explorer\User Shell Folders"
+)
+
+
+WINDOWS_FOLDER_KEYS = {
+    "desktop": "Desktop",
+    "documents": "Personal",
+    "pictures": "My Pictures",
+    "music": "My Music",
+    "videos": "My Video",
+    "downloads": "{374DE290-123F-4565-9164-39C4925E467B}",
 }
 
 
-def get_common_folder(folder_name):
+def get_windows_folder(folder_name):
     """
-    Return the path of a common Windows folder.
+    Get the actual Windows path for a common user folder.
+    Supports redirected folders such as OneDrive.
     """
 
     folder_name = folder_name.lower().strip()
 
-    if folder_name not in COMMON_FOLDERS:
+    registry_value = WINDOWS_FOLDER_KEYS.get(folder_name)
+
+    if not registry_value:
         return None
 
-    path = COMMON_FOLDERS[folder_name]
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            SHELL_FOLDER_REGISTRY_PATH,
+        ) as key:
+            folder_path, _ = winreg.QueryValueEx(
+                key,
+                registry_value,
+            )
 
-    if path.exists():
-        return path
+        folder_path = os.path.expandvars(folder_path)
 
-    return None
+        path = Path(folder_path)
+
+        if path.exists() and path.is_dir():
+            return path
+
+        return None
+
+    except (FileNotFoundError, OSError):
+        return None
 
 
 def open_common_folder(folder_name):
@@ -42,16 +67,23 @@ def open_common_folder(folder_name):
 
     folder_name = folder_name.lower().strip()
 
-    path = get_common_folder(folder_name)
+    if folder_name not in WINDOWS_FOLDER_KEYS:
+        return None
 
-    if path:
-        os.startfile(path)
-        return f"Opening {folder_name}."
+    path = get_windows_folder(folder_name)
 
-    if folder_name in COMMON_FOLDERS:
+    if not path:
         return f"{folder_name} folder was not found."
 
-    return None
+    try:
+        os.startfile(path)
+
+        return f"Opening {folder_name}."
+
+    except OSError as error:
+        print(f"Open common folder error: {error}")
+
+        return f"I couldn't open the {folder_name} folder."
 
 
 def search_folder(folder_name):
@@ -70,7 +102,6 @@ def search_folder(folder_name):
 
     folder_path = Path(path)
 
-    # Make sure the folder still exists on the computer
     if folder_path.exists() and folder_path.is_dir():
         return folder_path
 
@@ -81,13 +112,13 @@ def find_folder_path(folder_name):
     """
     Resolve a folder name to its actual filesystem path.
 
-    First checks common Windows folders.
+    First checks Windows-known folders.
     Then searches the SQLite folder index.
     """
 
     folder_name = folder_name.lower().strip()
 
-    common_path = get_common_folder(folder_name)
+    common_path = get_windows_folder(folder_name)
 
     if common_path:
         return common_path
@@ -100,7 +131,8 @@ def open_folder(folder_name):
     Open a folder.
 
     First checks common Windows folders.
-    If it is not a common folder, search the SQLite folder index.
+    If it is not a common folder, searches
+    the SQLite folder index.
     """
 
     if not request_permission("open_folder"):
@@ -108,7 +140,7 @@ def open_folder(folder_name):
 
     folder_name = folder_name.lower().strip()
 
-    # Check common Windows folders first
+    # Check Windows-known folders first
     common_result = open_common_folder(folder_name)
 
     if common_result:
@@ -120,9 +152,12 @@ def open_folder(folder_name):
     if match:
         try:
             os.startfile(match)
+
             return f"Opening {match.name}."
 
-        except OSError:
+        except OSError as error:
+            print(f"Open folder error: {error}")
+
             return f"I found {match}, but I couldn't open it."
 
     return f"I couldn't find a folder called {folder_name}."
@@ -130,12 +165,15 @@ def open_folder(folder_name):
 
 def close_folder(folder_name):
     """
-    Close a File Explorer window that is currently displaying
-    the requested folder.
+    Close a File Explorer window that is currently
+    displaying the requested folder.
     """
 
-    if not request_permission("close_folder"):
-        return "Permission denied."
+    if not request_permission(
+        "close_folder",
+        f"Do you want me to close the {folder_name} folder?"
+    ):
+        return "Action cancelled."
 
     folder_name = folder_name.lower().strip()
 
